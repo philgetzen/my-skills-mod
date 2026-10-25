@@ -40,9 +40,43 @@ async function skills($: EngineInterface, folder: string): Promise<Item[]> {
   const names = entries
     .filter(one => (one.kind === 'dir' || one.isLink) && !one.name.startsWith('.'))
     .map(one => one.name)
-  return Promise.all(
-    names.map(async name => ({ name, description: await describe($, `${folder}/${name}/SKILL.md`) })),
+  // A folder without a SKILL.md (such as ~/.claude/skills/synced) is not a skill.
+  const found = await Promise.all(
+    names.map(async name => {
+      const target = `${folder}/${name}/SKILL.md`
+      if (!(await $.fs.exists(target))) return undefined
+      return { name, target, description: await describe($, target) }
+    }),
   )
+  return found.filter((one): one is Item => one !== undefined)
+}
+
+type SyncedSkill = { skillId: string; name: string; description?: string }
+
+// Skills uploaded to the claude.ai account, from the manifest Claude Code syncs
+// into ~/.claude/skills/synced/<bucket>/. Anthropic's own skills there carry a
+// plain id ("pdf"); the person's carry an account id ("skill_..."), which is
+// also what their Customize page is addressed by.
+async function accountSkills($: EngineInterface, folder: string): Promise<Item[]> {
+  if (!(await $.fs.exists(folder))) return []
+  const byId = new Map<string, Item>()
+  for (const bucket of await $.fs.list(folder)) {
+    if (bucket.kind !== 'dir') continue
+    try {
+      const manifest = JSON.parse(await $.fs.read(`${folder}/${bucket.name}/manifest.json`))
+      for (const skill of (manifest.skills ?? []) as SyncedSkill[]) {
+        if (!skill.skillId?.startsWith('skill_')) continue
+        byId.set(skill.skillId, {
+          name: skill.name,
+          description: skill.description ?? '',
+          target: `claude://claude.ai/customize/skills/yours/id/${skill.skillId}`,
+        })
+      }
+    } catch {
+      // A bucket mid-sync or without a manifest lists nothing.
+    }
+  }
+  return [...byId.values()]
 }
 
 async function commands($: EngineInterface, folder: string): Promise<Item[]> {
@@ -53,6 +87,7 @@ async function commands($: EngineInterface, folder: string): Promise<Item[]> {
       .filter(one => one.name.endsWith('.md'))
       .map(async one => ({
         name: `/${one.name.slice(0, -3)}`,
+        target: `${folder}/${one.name}`,
         description: await describe($, `${folder}/${one.name}`),
       })),
   )
@@ -74,6 +109,8 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   const projectCommands =
     root === home ? [] : await commands($, `${root}/.claude/commands`)
 
+  const account = await accountSkills($, `${home}/.claude/skills/synced`)
+
   const sort = (list: Item[]) => [...list].sort((a, b) => a.name.localeCompare(b.name))
   const tilde = (path: string) => (home && path.startsWith(home) ? `~${path.slice(home.length)}` : path)
 
@@ -89,7 +126,23 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
       folders: [tilde(`${root}/.claude`)],
       items: [...sort(projectSkills), ...sort(projectCommands)],
     },
+    { title: 'Account', folders: ['claude.ai, Customize › Skills'], items: sort(account) },
   ]
+}
+
+// A file opens in the default text editor (`open -t` on macOS, `xdg-open` on
+// Linux); a claude:// link opens in the desktop app.
+async function openTarget($: EngineInterface, target: string) {
+  const isLink = target.startsWith('claude://')
+  const openers = isLink ? [['open', target], ['xdg-open', target]] : [['open', '-t', target], ['xdg-open', target]]
+  for (const argv of openers) {
+    try {
+      if ((await $.process.run(argv)).exitCode === 0) return
+    } catch {
+      // Not on this platform; try the next opener.
+    }
+  }
+  $.ui.toast(`Could not open ${target}`)
 }
 
 async function refresh($: EngineInterface, globalSetting: string) {
@@ -133,9 +186,14 @@ export const register: Register = (on, options) => {
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
             {[...section.items].reverse().map(item => (
               <Box key={`${section.title}:${item.name}`}>
-                <Text hover={{ bold: true, color: 'suggestion' }} wrap="truncate-end">
+                <Button
+                  key={`open:${section.title}:${item.name}`}
+                  plain
+                  hover={{ bold: true, color: 'suggestion' }}
+                  onPress={() => openTarget($, item.target)}
+                >
                   {item.name}
-                </Text>
+                </Button>
                 <Box
                   position="absolute"
                   top={1}

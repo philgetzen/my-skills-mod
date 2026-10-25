@@ -5,6 +5,9 @@ A Claude Code mod that opens a "My skills" pane listing the skills and slash com
 - **Global**: a folder of skills shared across all your agents. It defaults to `~/.config/skillshare/skills`, and you can change it when you install the mod or later in `/config`.
 - **User**: `~/.claude/skills` and `~/.claude/commands`, minus anything already listed under Global.
 - **Project**: `.claude/skills` and `.claude/commands` in the session's project root.
+- **Account**: the skills you uploaded to your claude.ai account, read from the copy Claude Code syncs to `~/.claude/skills/synced`.
+
+Hover a name to see what the skill does. Click it to open its `SKILL.md` (or command file) in your default editor, or, for an Account skill, its page in Customize › Skills in the Claude desktop app.
 
 Run `/my-skills` to reopen the pane and rescan. The pane also has a Refresh button.
 
