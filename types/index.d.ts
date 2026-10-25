@@ -1,4 +1,5 @@
-export type Section = { title: string; folders: string[]; names: string[] }
+export type Item = { name: string; description: string }
+export type Section = { title: string; folders: string[]; items: Item[] }
 
 declare module 'claude-code' {
   interface PluginState {
