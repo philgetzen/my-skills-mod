@@ -1,0 +1,17 @@
+{
+  "name": "my-skills",
+  "version": "0.1.0",
+  "description": "Pane listing the skills and commands you created, split into global, user and project",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Phil Getzen"
+  },
+  "userConfig": {
+    "globalSkillsDir": {
+      "type": "string",
+      "title": "Global skills folder",
+      "description": "Folder of skills shared across all your agents (shown as Global). Leave the default if you don't use one.",
+      "default": "~/.config/skillshare/skills"
+    }
+  }
+}
