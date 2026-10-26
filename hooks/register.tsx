@@ -33,8 +33,22 @@ async function describe($: EngineInterface, path: string): Promise<string> {
   }
 }
 
+// True when `path` is a regular file that, every link followed, stays under
+// `root` (already resolved). Guards the Project folders, which come from
+// whatever repository the session opened: a SKILL.md there that links to
+// ~/.ssh/id_ed25519 must not be read or opened.
+async function isInside($: EngineInterface, path: string, root: string): Promise<boolean> {
+  try {
+    const found = await $.fs.stat(path, { resolve: true })
+    return found.kind === 'file' && found.realPath !== undefined && found.realPath.startsWith(`${root}/`)
+  } catch {
+    return false
+  }
+}
+
 // Skill folders are often symlinks (skillshare), so accept links as well as dirs.
-async function skills($: EngineInterface, folder: string): Promise<Item[]> {
+// With `confineTo`, a skill whose file resolves outside that root is left out.
+async function skills($: EngineInterface, folder: string, confineTo?: string): Promise<Item[]> {
   if (!(await $.fs.exists(folder))) return []
   const entries = await $.fs.list(folder)
   const names = entries
@@ -45,6 +59,7 @@ async function skills($: EngineInterface, folder: string): Promise<Item[]> {
     names.map(async name => {
       const target = `${folder}/${name}/SKILL.md`
       if (!(await $.fs.exists(target))) return undefined
+      if (confineTo !== undefined && !(await isInside($, target, confineTo))) return undefined
       return { name, target, description: await describe($, target) }
     }),
   )
@@ -65,7 +80,7 @@ async function accountSkills($: EngineInterface, folder: string): Promise<Item[]
     try {
       const manifest = JSON.parse(await $.fs.read(`${folder}/${bucket.name}/manifest.json`))
       for (const skill of (manifest.skills ?? []) as SyncedSkill[]) {
-        if (!skill.skillId?.startsWith('skill_')) continue
+        if (typeof skill.skillId !== 'string' || !/^skill_[A-Za-z0-9]+$/.test(skill.skillId)) continue
         byId.set(skill.skillId, {
           name: skill.name,
           description: skill.description ?? '',
@@ -79,18 +94,19 @@ async function accountSkills($: EngineInterface, folder: string): Promise<Item[]
   return [...byId.values()]
 }
 
-async function commands($: EngineInterface, folder: string): Promise<Item[]> {
+async function commands($: EngineInterface, folder: string, confineTo?: string): Promise<Item[]> {
   if (!(await $.fs.exists(folder))) return []
   const entries = await $.fs.list(folder)
-  return Promise.all(
+  const found = await Promise.all(
     entries
       .filter(one => one.name.endsWith('.md'))
-      .map(async one => ({
-        name: `/${one.name.slice(0, -3)}`,
-        target: `${folder}/${one.name}`,
-        description: await describe($, `${folder}/${one.name}`),
-      })),
+      .map(async one => {
+        const target = `${folder}/${one.name}`
+        if (confineTo !== undefined && !(await isInside($, target, confineTo))) return undefined
+        return { name: `/${one.name.slice(0, -3)}`, target, description: await describe($, target) }
+      }),
   )
+  return found.filter((one): one is Item => one !== undefined)
 }
 
 async function scan($: EngineInterface, globalSetting: string): Promise<Section[]> {
@@ -104,10 +120,13 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   const userSkills = (await skills($, `${home}/.claude/skills`)).filter(one => !seen.has(one.name))
   const userCommands = await commands($, `${home}/.claude/commands`)
 
-  const projectSkills =
-    root === home ? [] : await skills($, `${root}/.claude/skills`)
-  const projectCommands =
-    root === home ? [] : await commands($, `${root}/.claude/commands`)
+  const realRoot = await $.fs
+    .stat(root, { resolve: true })
+    .then(found => found.realPath)
+    .catch(() => undefined)
+  const isProject = root !== home && realRoot !== undefined
+  const projectSkills = isProject ? await skills($, `${root}/.claude/skills`, realRoot) : []
+  const projectCommands = isProject ? await commands($, `${root}/.claude/commands`, realRoot) : []
 
   const account = await accountSkills($, `${home}/.claude/skills/synced`)
 
