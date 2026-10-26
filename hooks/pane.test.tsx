@@ -219,9 +219,11 @@ test('health flags a dangling link, a bare skill and a name collision, without r
   expect((await ui.find({ type: 'Text', text: /User \(/ }))?.text).toBe('User (3)')
   expect(await ui.find({ type: 'Text', text: /3 health/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /1 health/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /no description · not in Global/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /link points nowhere/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /also in Global/ })).toBeDefined()
+  // Each flag reads as a warning that says what is wrong and what to do.
+  for (const flag of [/^No description: .*Add a description: line/, /^Not in your Global folder: .*skillshare collect/,
+    /^Broken link: .*Delete the link/, /^Same name in Global: both answer to \/verify.*Rename or remove one/]) {
+    expect((await ui.find({ type: 'Text', text: flag }))?.props.color).toBe('warning')
+  }
   expect(reads).not.toContain('/home/u/.claude/skills/gone/SKILL.md')
   // The link may lead to any file (a repo can point one at ~/.ssh), so the row opens nothing.
   await ui.press({ key: 'open:User:/home/u/.claude/skills/gone' })

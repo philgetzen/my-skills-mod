@@ -11,7 +11,12 @@ const starred = atom({ plugin: 'my-skills', key: 'starred' } as const, [])
 const STARRED_KEY = 'starred'
 const usage = atom({ plugin: 'my-skills', key: 'usage' } as const, { byName: {} })
 const USAGE_KEY = 'usage'
-const DANGLING = 'link points nowhere'
+// Each flag says what is wrong and what to do about it, shown first in the hover card.
+const DANGLING = "Broken link: this entry points to something that isn't a skill folder. Delete the link, or point it at the skill's folder."
+const BARE = "No description: Claude can't tell when to use it. Add a description: line to the top of its file."
+const UNMANAGED = "Not in your Global folder: skillshare doesn't track it, so your other agents don't get it. Run skillshare collect claude to move it there, or delete it if it's a leftover."
+const clash = (name: string, other: string[]) =>
+  `Same name in ${other.join(' and ')}: both answer to /${name}, so the wrong one may load. Rename or remove one.`
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
@@ -153,14 +158,14 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   for (const [title, items] of lists) {
     for (const item of items) {
       if (title !== 'Account' && item.description === '' && !item.health?.includes(DANGLING)) {
-        item.health = [...(item.health ?? []), 'no description']
+        item.health = [...(item.health ?? []), BARE]
       }
     }
   }
   if (global.length > 0) {
     for (const item of userSkills) {
       if (!item.health?.includes(DANGLING)) {
-        item.health = [...(item.health ?? []), 'not in Global (unmanaged)']
+        item.health = [...(item.health ?? []), UNMANAGED]
       }
     }
   }
@@ -173,8 +178,9 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   }
   for (const [title, items] of lists) {
     for (const item of items) {
-      const other = (titlesByName.get(item.name.replace(/^\//, '')) ?? []).filter(one => one !== title)
-      if (other.length > 0) item.health = [...(item.health ?? []), `also in ${other.join(', ')}`]
+      const name = item.name.replace(/^\//, '')
+      const other = (titlesByName.get(name) ?? []).filter(one => one !== title)
+      if (other.length > 0) item.health = [...(item.health ?? []), clash(name, other)]
     }
   }
 
@@ -314,7 +320,9 @@ export const register: Register = (on, options) => {
   // A floating card is painted over whatever comes before it in the tree, so each
   // list is written bottom-up and laid out with column-reverse: the rows a card
   // drops over come earlier in the tree than the card itself. The spacer at the
-  // end leaves the last row's card room to show inside the pane.
+  // end leaves the last row's card room to show inside the pane: a card that
+  // sticks out past it grows the scroll area, the pane jumps, the hover drops
+  // and the card flickers, so it is sized for a card with flags.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, sections)
@@ -344,7 +352,7 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column-reverse">
-        <Box height={8} />
+        <Box height={16} />
         {[...shown].reverse().map(section => (
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
             {[...section.items].reverse().map(item => {
@@ -396,8 +404,10 @@ export const register: Register = (on, options) => {
                     borderColor="suggestion"
                     backgroundColor="inverseText"
                     paddingX={1}
+                    flexDirection="column"
                   >
-                    <Text>{[item.description, ...(item.health ?? [])].filter(Boolean).join(' · ') || 'No description.'}</Text>
+                    {(item.health ?? []).map(flag => <Text color="warning">{flag}</Text>)}
+                    {(item.description || !item.health) && <Text>{item.description || 'No description.'}</Text>}
                   </Box>
                 </Box>
               )
