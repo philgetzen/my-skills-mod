@@ -1,6 +1,6 @@
 {
   "name": "my-skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pane listing the skills and commands you created, split into global, user and project",
   "types": "./types/index.d.ts",
   "author": {

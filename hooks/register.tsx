@@ -171,17 +171,24 @@ async function openTarget($: EngineInterface, target: string) {
 async function refresh($: EngineInterface, globalSetting: string) {
   const next = await scan($, globalSetting)
   await update($, sections, () => next)
+  await loadStars($)
+}
+
+async function savedStars($: EngineInterface): Promise<string[]> {
+  const saved = await $.store.get(STARRED_KEY)
+  return Array.isArray(saved) ? saved.filter((one): one is string => typeof one === 'string') : []
 }
 
 async function loadStars($: EngineInterface) {
-  const saved = await $.store.get(STARRED_KEY)
-  const list = Array.isArray(saved) ? saved.filter((one): one is string => typeof one === 'string') : []
+  const list = await savedStars($)
   await update($, starred, () => list)
 }
 
-async function toggleStar($: EngineInterface, target: string) {
-  const current = await read($, starred)
-  const next = current.includes(target) ? current.filter(one => one !== target) : [...current, target]
+// Every thread keeps its own copy of the stars, so a star starts from what is
+// saved now, not from this copy: another thread's stars are kept.
+async function setStar($: EngineInterface, target: string, isStarred: boolean) {
+  const others = (await savedStars($)).filter(one => one !== target)
+  const next = isStarred ? [...others, target] : others
   await $.store.set(STARRED_KEY, next)
   await update($, starred, () => next)
 }
@@ -194,7 +201,6 @@ export const register: Register = (on, options) => {
       name: 'my-skills',
       description: 'Show your skills and commands: starred, global, user, project, account',
     })
-    await loadStars($)
     await refresh($, globalDir)
     void $.ui.open({ id: PANE, title: 'My skills' })
 
@@ -252,7 +258,7 @@ export const register: Register = (on, options) => {
                   <Button
                     key={`star:${section.title}:${item.target}`}
                     plain
-                    onPress={() => toggleStar($, item.target)}
+                    onPress={() => setStar($, item.target, !stars.has(item.target))}
                   >
                     {stars.has(item.target) ? '★' : '☆'}
                   </Button>
