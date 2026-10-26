@@ -5,6 +5,10 @@ import type { Item, Section } from '../types'
 
 const PANE = 'my-skills'
 const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
+// The targets of the starred items: the session's copy, kept in `$.store` so the
+// stars outlive the session.
+const starred = atom({ plugin: 'my-skills', key: 'starred' } as const, [])
+const STARRED_KEY = 'starred'
 
 // The `description:` in a file's frontmatter, folded scalars (`>`, `|`) included.
 function frontmatterDescription(text: string): string {
@@ -169,14 +173,28 @@ async function refresh($: EngineInterface, globalSetting: string) {
   await update($, sections, () => next)
 }
 
+async function loadStars($: EngineInterface) {
+  const saved = await $.store.get(STARRED_KEY)
+  const list = Array.isArray(saved) ? saved.filter((one): one is string => typeof one === 'string') : []
+  await update($, starred, () => list)
+}
+
+async function toggleStar($: EngineInterface, target: string) {
+  const current = await read($, starred)
+  const next = current.includes(target) ? current.filter(one => one !== target) : [...current, target]
+  await $.store.set(STARRED_KEY, next)
+  await update($, starred, () => next)
+}
+
 export const register: Register = (on, options) => {
   const globalDir = String(options.globalSkillsDir ?? '~/.config/skillshare/skills')
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'my-skills',
-      description: 'Show your skills and commands, by global, user and project',
+      description: 'Show your skills and commands: starred, global, user, project, account',
     })
+    await loadStars($)
     await refresh($, globalDir)
     void $.ui.open({ id: PANE, title: 'My skills' })
 
@@ -197,25 +215,52 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, sections)
+    const stars = new Set(await read($, starred))
+    const starredItems = list
+      .flatMap(section => section.items)
+      .filter(item => stars.has(item.target))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const shown: Section[] = [
+      { title: 'Starred', folders: ['Click ☆ beside a name to star it'], items: starredItems },
+      ...list,
+    ]
 
     return (
       <Box flexDirection="column-reverse">
         <Box height={8} />
-        {[...list].reverse().map(section => (
+        {[...shown].reverse().map(section => (
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
             {[...section.items].reverse().map(item => (
-              <Box key={`${section.title}:${item.name}`}>
+              <Box key={`${section.title}:${item.target}`}>
                 <Button
-                  key={`open:${section.title}:${item.name}`}
+                  key={`open:${section.title}:${item.target}`}
                   plain
                   hover={{ bold: true, color: 'suggestion' }}
                   onPress={() => openTarget($, item.target)}
                 >
                   {item.name}
                 </Button>
+                {/* The star sits after the name, so revealing it moves nothing. A
+                    starred item keeps its ★ in view; an unstarred one shows ☆
+                    only while its row is hovered. (A desktop draws every Button
+                    with native padding, so a star before the name could not sit
+                    any tighter than that.) */}
+                <Box
+                  display={stars.has(item.target) ? 'flex' : 'none'}
+                  hover={stars.has(item.target) ? undefined : { display: 'flex' }}
+                >
+                  <Button
+                    key={`star:${section.title}:${item.target}`}
+                    plain
+                    onPress={() => toggleStar($, item.target)}
+                  >
+                    {stars.has(item.target) ? '★' : '☆'}
+                  </Button>
+                </Box>
                 <Box
                   position="absolute"
                   top={1}
+                  marginTop={0.5}
                   left={2}
                   right={0}
                   display="none"

@@ -4,6 +4,6 @@ export type Section = { title: string; folders: string[]; items: Item[] }
 
 declare module 'claude-code' {
   interface PluginState {
-    'my-skills': { sections: Section[] }
+    'my-skills': { sections: Section[]; starred: string[] }
   }
 }

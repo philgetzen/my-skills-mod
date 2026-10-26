@@ -7,6 +7,8 @@ A Claude Code mod that opens a "My skills" pane listing the skills and slash com
 - **Project**: `.claude/skills` and `.claude/commands` in the session's project root.
 - **Account**: the skills you uploaded to your claude.ai account, read from the copy Claude Code syncs to `~/.claude/skills/synced`.
 
+A **Starred** section sits at the top: hover a row and click the ☆ after the name to star it, click ★ to unstar. Stars are saved across sessions.
+
 Hover a name to see what the skill does. Click it to open its `SKILL.md` (or command file) in your default editor, or, for an Account skill, its page in Customize › Skills in the Claude desktop app.
 
 Run `/my-skills` to reopen the pane and rescan. The pane also has a Refresh button.
