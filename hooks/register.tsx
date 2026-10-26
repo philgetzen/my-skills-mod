@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Item, Section } from '../types'
+import type { Item, Section, Usage } from '../types'
 
 const PANE = 'my-skills'
 const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
@@ -9,6 +9,11 @@ const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
 // stars outlive the session.
 const starred = atom({ plugin: 'my-skills', key: 'starred' } as const, [])
 const STARRED_KEY = 'starred'
+const usage = atom({ plugin: 'my-skills', key: 'usage' } as const, { byName: {} })
+const USAGE_KEY = 'usage'
+const DANGLING = 'link points nowhere'
+const HOUR = 60 * 60 * 1000
+const DAY = 24 * HOUR
 
 // The `description:` in a file's frontmatter, folded scalars (`>`, `|`) included.
 function frontmatterDescription(text: string): string {
@@ -55,14 +60,17 @@ async function isInside($: EngineInterface, path: string, root: string): Promise
 async function skills($: EngineInterface, folder: string, confineTo?: string): Promise<Item[]> {
   if (!(await $.fs.exists(folder))) return []
   const entries = await $.fs.list(folder)
-  const names = entries
-    .filter(one => (one.kind === 'dir' || one.isLink) && !one.name.startsWith('.'))
-    .map(one => one.name)
-  // A folder without a SKILL.md (such as ~/.claude/skills/synced) is not a skill.
   const found = await Promise.all(
-    names.map(async name => {
+    entries
+    .filter(one => (one.kind === 'dir' || one.isLink) && !one.name.startsWith('.'))
+    .map(async entry => {
+      const name = entry.name
       const target = `${folder}/${name}/SKILL.md`
-      if (!(await $.fs.exists(target))) return undefined
+      if (!(await $.fs.exists(target))) {
+        return entry.isLink
+          ? { name, target: `${folder}/${name}`, description: '', health: [DANGLING] }
+          : undefined
+      }
       if (confineTo !== undefined && !(await isInside($, target, confineTo))) return undefined
       return { name, target, description: await describe($, target) }
     }),
@@ -133,6 +141,42 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   const projectCommands = isProject ? await commands($, `${root}/.claude/commands`, realRoot) : []
 
   const account = await accountSkills($, `${home}/.claude/skills/synced`)
+  const user = [...userSkills, ...userCommands]
+  const project = [...projectSkills, ...projectCommands]
+
+  const lists: [string, Item[]][] = [
+    ['Global', global],
+    ['User', user],
+    ['Project', project],
+    ['Account', account],
+  ]
+  for (const [title, items] of lists) {
+    for (const item of items) {
+      if (title !== 'Account' && item.description === '' && !item.health?.includes(DANGLING)) {
+        item.health = [...(item.health ?? []), 'no description']
+      }
+    }
+  }
+  if (global.length > 0) {
+    for (const item of userSkills) {
+      if (!item.health?.includes(DANGLING)) {
+        item.health = [...(item.health ?? []), 'not in Global (unmanaged)']
+      }
+    }
+  }
+  const titlesByName = new Map<string, string[]>()
+  for (const [title, items] of lists) {
+    for (const item of items) {
+      const name = item.name.replace(/^\//, '')
+      titlesByName.set(name, [...(titlesByName.get(name) ?? []), title])
+    }
+  }
+  for (const [title, items] of lists) {
+    for (const item of items) {
+      const other = (titlesByName.get(item.name.replace(/^\//, '')) ?? []).filter(one => one !== title)
+      if (other.length > 0) item.health = [...(item.health ?? []), `also in ${other.join(', ')}`]
+    }
+  }
 
   const sort = (list: Item[]) => [...list].sort((a, b) => a.name.localeCompare(b.name))
   const tilde = (path: string) => (home && path.startsWith(home) ? `~${path.slice(home.length)}` : path)
@@ -142,12 +186,12 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
     {
       title: 'User',
       folders: [tilde(`${home}/.claude/skills`), tilde(`${home}/.claude/commands`)],
-      items: [...sort(userSkills), ...sort(userCommands)],
+      items: sort(user),
     },
     {
       title: 'Project',
       folders: [tilde(`${root}/.claude`)],
-      items: [...sort(projectSkills), ...sort(projectCommands)],
+      items: sort(project),
     },
     { title: 'Account', folders: ['claude.ai, Customize › Skills'], items: sort(account) },
   ]
@@ -172,6 +216,7 @@ async function refresh($: EngineInterface, globalSetting: string) {
   const next = await scan($, globalSetting)
   await update($, sections, () => next)
   await loadStars($)
+  await loadUsage($)
 }
 
 async function savedStars($: EngineInterface): Promise<string[]> {
@@ -182,6 +227,52 @@ async function savedStars($: EngineInterface): Promise<string[]> {
 async function loadStars($: EngineInterface) {
   const list = await savedStars($)
   await update($, starred, () => list)
+}
+
+async function savedUsage($: EngineInterface): Promise<Usage> {
+  const saved = await $.store.get(USAGE_KEY)
+  const object = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+  const number = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+  if (!object(saved) || !object(saved.byName)) return { byName: {} }
+  // A malformed entry is dropped alone, so the next write keeps every other count.
+  const byName: Usage['byName'] = {}
+  for (const [name, use] of Object.entries(saved.byName)) {
+    if (object(use) && number(use.count) && number(use.lastUsed) && object(use.byWorkspace) &&
+      Object.values(use.byWorkspace).every(number)) byName[name] = use as Usage['byName'][string]
+  }
+  return number(saved.since) ? { since: saved.since, byName } : { byName }
+}
+
+async function loadUsage($: EngineInterface) {
+  const saved = await savedUsage($)
+  await update($, usage, () => saved)
+}
+
+async function record($: EngineInterface, skill: string) {
+  const list = await read($, sections)
+  if (!list.some(section => section.items.some(item => item.name.replace(/^\//, '') === skill))) return
+  const now = await $.clock.now()
+  const root = await $.session.root()
+  const saved = await savedUsage($)
+  const previous = Object.hasOwn(saved.byName, skill) ? saved.byName[skill] : undefined
+  const next: Usage = {
+    since: saved.since ?? now,
+    byName: {
+      ...saved.byName,
+      [skill]: {
+        count: (previous?.count ?? 0) + 1,
+        lastUsed: now,
+        byWorkspace: {
+          ...previous?.byWorkspace,
+          [root]: ((previous && Object.hasOwn(previous.byWorkspace, root) ? previous.byWorkspace[root] : 0) ?? 0) + 1,
+        },
+      },
+    },
+  }
+  await $.store.set(USAGE_KEY, next)
+  await update($, usage, () => next)
 }
 
 // Every thread keeps its own copy of the stars, so a star starts from what is
@@ -195,6 +286,12 @@ async function setStar($: EngineInterface, target: string, isStarred: boolean) {
 
 export const register: Register = (on, options) => {
   const globalDir = String(options.globalSkillsDir ?? '~/.config/skillshare/skills')
+
+  on('skill.prompt', async ($, e, next) => {
+    const result = await next(e)
+    try { await record($, e.skill) } catch {}
+    return result
+  })
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -222,11 +319,25 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, sections)
     const stars = new Set(await read($, starred))
+    const saved = await read($, usage)
+    const now = await $.clock.now()
+    const useOf = (item: Item) => {
+      const name = item.name.replace(/^\//, '')
+      return Object.hasOwn(saved.byName, name) ? saved.byName[name] : undefined
+    }
     const starredItems = list
       .flatMap(section => section.items)
       .filter(item => stars.has(item.target))
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .sort((a, b) => (useOf(b)?.lastUsed ?? -Infinity) - (useOf(a)?.lastUsed ?? -Infinity) || a.name.localeCompare(b.name))
+    const root = await $.session.root()
+    const inRepo = list
+      .flatMap(section => section.items)
+      .filter(item => (useOf(item)?.byWorkspace[root] ?? 0) > 0)
+      .sort((a, b) => (useOf(b)?.byWorkspace[root] ?? 0) - (useOf(a)?.byWorkspace[root] ?? 0) || a.name.localeCompare(b.name))
+      .slice(0, 5)
+    const total = inRepo.reduce((sum, item) => sum + (useOf(item)?.byWorkspace[root] ?? 0), 0)
     const shown: Section[] = [
+      ...(total >= 5 ? [{ title: 'Suggested for this repo', folders: [`Most used in ${root}`], items: inRepo }] : []),
       { title: 'Starred', folders: ['Click ☆ beside a name to star it'], items: starredItems },
       ...list,
     ]
@@ -236,57 +347,74 @@ export const register: Register = (on, options) => {
         <Box height={8} />
         {[...shown].reverse().map(section => (
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
-            {[...section.items].reverse().map(item => (
-              <Box key={`${section.title}:${item.target}`}>
-                <Button
-                  key={`open:${section.title}:${item.target}`}
-                  plain
-                  hover={{ bold: true, color: 'suggestion' }}
-                  onPress={() => openTarget($, item.target)}
-                >
-                  {item.name}
-                </Button>
-                {/* The star sits after the name, so revealing it moves nothing. A
-                    starred item keeps its ★ in view; an unstarred one shows ☆
-                    only while its row is hovered. (A desktop draws every Button
-                    with native padding, so a star before the name could not sit
-                    any tighter than that.) */}
-                <Box
-                  display={stars.has(item.target) ? 'flex' : 'none'}
-                  hover={stars.has(item.target) ? undefined : { display: 'flex' }}
-                >
+            {[...section.items].reverse().map(item => {
+              const use = useOf(item)
+              const age = use ? now - use.lastUsed : 0
+              const ago = age < HOUR ? 'just now' : age < DAY ? `${Math.floor(age / HOUR)}h ago` : `${Math.floor(age / DAY)}d ago`
+              const stale = use ? age >= 30 * DAY : saved.since !== undefined && now - saved.since >= 30 * DAY
+              return (
+                <Box key={`${section.title}:${item.target}`}>
                   <Button
-                    key={`star:${section.title}:${item.target}`}
+                    key={`open:${section.title}:${item.target}`}
                     plain
-                    onPress={() => setStar($, item.target, !stars.has(item.target))}
+                    dimColor={stale}
+                    hover={{ bold: true, color: 'suggestion' }}
+                    // A link that points nowhere may still lead to a file outside every
+                    // guarded folder (a repo can aim one at ~/.ssh), so it opens nothing.
+                    onPress={() => item.health?.includes(DANGLING) ? undefined : openTarget($, item.target)}
                   >
-                    {stars.has(item.target) ? '★' : '☆'}
+                    {item.name}
                   </Button>
+                  {/* The star sits after the name, so revealing it moves nothing. A
+                      starred item keeps its ★ in view; an unstarred one shows ☆
+                      only while its row is hovered. (A desktop draws every Button
+                      with native padding, so a star before the name could not sit
+                      any tighter than that.) */}
+                  <Box
+                    display={stars.has(item.target) ? 'flex' : 'none'}
+                    hover={stars.has(item.target) ? undefined : { display: 'flex' }}
+                  >
+                    <Button
+                      key={`star:${section.title}:${item.target}`}
+                      plain
+                      onPress={() => setStar($, item.target, !stars.has(item.target))}
+                    >
+                      {stars.has(item.target) ? '★' : '☆'}
+                    </Button>
+                  </Box>
+                  {item.health && <Text color="warning">!</Text>}
+                  {use && <Text dimColor>{use.count}× · {ago}</Text>}
+                  <Box
+                    position="absolute"
+                    top={1}
+                    marginTop={0.5}
+                    left={2}
+                    right={0}
+                    display="none"
+                    hover={{ display: 'flex' }}
+                    borderStyle="round"
+                    borderColor="suggestion"
+                    backgroundColor="inverseText"
+                    paddingX={1}
+                  >
+                    <Text>{[item.description, ...(item.health ?? [])].filter(Boolean).join(' · ') || 'No description.'}</Text>
+                  </Box>
                 </Box>
-                <Box
-                  position="absolute"
-                  top={1}
-                  marginTop={0.5}
-                  left={2}
-                  right={0}
-                  display="none"
-                  hover={{ display: 'flex' }}
-                  borderStyle="round"
-                  borderColor="suggestion"
-                  backgroundColor="inverseText"
-                  paddingX={1}
-                >
-                  <Text>{item.description || 'No description.'}</Text>
-                </Box>
-              </Box>
-            ))}
+              )
+            })}
             {section.items.length === 0 && <Text dimColor>none</Text>}
             <Text dimColor>{section.folders.join(', ')}</Text>
-            <Text bold>
-              {section.title} ({section.items.length})
-            </Text>
+            <Box>
+              <Text bold>{section.title} ({section.items.length})</Text>
+              {section.items.filter(item => item.health?.length).length > 0 && (
+                <Text color="warning">{section.items.filter(item => item.health?.length).length} health</Text>
+              )}
+            </Box>
           </Box>
         ))}
+        <Text dimColor>
+          {saved.since === undefined ? 'No uses recorded yet' : `Since ${new Date(saved.since).toLocaleDateString()} · counts every expansion, subagent preloads included`}
+        </Text>
         <Button key="refresh" onPress={() => refresh($, globalDir)}>Refresh</Button>
       </Box>
     )

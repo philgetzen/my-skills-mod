@@ -1,7 +1,7 @@
 {
   "name": "my-skills",
-  "version": "0.2.0",
-  "description": "Pane listing the skills and commands you created, split into global, user and project",
+  "version": "0.3.0",
+  "description": "Pane listing the skills and commands you created, with use counts, health flags and suggestions for the current repo",
   "types": "./types/index.d.ts",
   "author": {
     "name": "Phil Getzen"
