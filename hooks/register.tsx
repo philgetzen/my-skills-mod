@@ -23,9 +23,6 @@ const SORT_KEY = 'sort'
 // The titles of the collapsed sections, kept in `$.store` like the stars.
 const collapsed = atom({ plugin: 'my-skills', key: 'collapsed' } as const, [])
 const COLLAPSED_KEY = 'collapsed'
-// How far the list is scrolled under the sort row, in rows. The pane scrolls
-// itself (see the `ui.scroll` hook), so it is not saved.
-const scrollTop = atom({ plugin: 'my-skills', key: 'scrollTop' } as const, 0)
 // Each flag says what is wrong and what to do about it, shown first in the hover card.
 const DANGLING = "Broken link: this entry points to something that isn't a skill folder. Delete the link, or point it at the skill's folder."
 const BARE = "No description: Claude can't tell when to use it. Add a description: line to the top of its file."
@@ -497,17 +494,6 @@ export const register: Register = (on, options) => {
   // end leaves the last row's card room to show inside the pane: a card that
   // sticks out past it grows the scroll area, the pane jumps, the hover drops
   // and the card flickers, so it is sized for a card with flags.
-  // The pane moves its own list rather than letting the engine move the window:
-  // an engine scroll moves the rows first and a header drawn after it a redraw
-  // later, so a sticky header jumps. Here both move in one redraw. The list is
-  // shifted with a relative offset, which leaves the tree's height, and so
-  // `contentRows`, as drawn.
-  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const end = Math.max(0, e.contentRows - e.bodyRows)
-    await update($, scrollTop, now => Math.min(end, Math.max(0, now + e.by)))
-    return {}
-  })
-
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, sections)
@@ -518,7 +504,6 @@ export const register: Register = (on, options) => {
     const since = Math.min(saved.since ?? Infinity, imported.oldest ?? Infinity)
     const order = await read($, sort)
     const closed = new Set(await read($, collapsed))
-    const offset = await read($, scrollTop)
     const home = (await $.env.get('HOME')) ?? ''
     const now = await $.clock.now()
     const useOf = (item: Item) => {
@@ -553,118 +538,127 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column-reverse">
-        <Box key="list" position="relative" top={0 - offset} flexDirection="column-reverse">
-          <Box height={16} />
-          {/* One footer line, a blank line below the last section. While the import
-              runs its date would be wrong, so it says what is happening instead. */}
-          <Box marginTop={1}>
-            <Text dimColor>
-              {busy
-                ? 'Importing history…'
-                : since === Infinity
-                  ? 'No uses counted yet'
-                  : `Counts since ${new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`}
-            </Text>
-          </Box>
-          {[...shown].reverse().map(section => (
-            <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
-              {!closed.has(section.title) && [...section.items].sort(compare).reverse().map(item => {
-                const origin = section.title === 'Starred' || section.title === 'Most used here'
-                  ? list.find(source => source.items.includes(item))?.title : undefined
-                const path = home && item.target.startsWith(`${home}/`) ? `~${item.target.slice(home.length)}` : item.target
-                const use = useOf(item)
-                const age = use ? now - use.lastUsed : 0
-                const ago = age < HOUR ? 'just now' : age < DAY ? `${Math.floor(age / HOUR)}h ago` : `${Math.floor(age / DAY)}d ago`
-                const stale = use ? age >= 30 * DAY : Number.isFinite(since) && now - since >= 30 * DAY
-                return (
-                  // In a narrow pane the count moves under the name as a unit instead of
-                  // breaking across lines.
-                  <Box key={`${section.title}:${item.target}`} flexWrap="wrap">
-                    <Button
-                      key={`open:${section.title}:${item.target}`}
-                      plain
-                      dimColor={stale}
-                      hover={{ bold: true, color: 'suggestion' }}
-                      // A link that points nowhere may still lead to a file outside every
-                      // guarded folder (a repo can aim one at ~/.ssh), so it opens nothing.
-                      onPress={() => item.health?.includes(DANGLING) ? undefined : openTarget($, item.target)}
-                    >
-                      {item.name}
-                    </Button>
-                    {/* The star sits after the name, so revealing it moves nothing. A
-                        starred item keeps its ★ in view; an unstarred one shows ☆
-                        only while its row is hovered. (A desktop draws every Button
-                        with native padding, so a star before the name could not sit
-                        any tighter than that.) */}
-                    <Box
-                      display={stars.has(item.target) ? 'flex' : 'none'}
-                      hover={stars.has(item.target) ? undefined : { display: 'flex' }}
-                    >
-                      <Button
-                        key={`star:${section.title}:${item.target}`}
-                        plain
-                        onPress={() => setStar($, item.target, !stars.has(item.target))}
-                      >
-                        {stars.has(item.target) ? '★' : '☆'}
-                      </Button>
-                    </Box>
-                    {(item.health || use) && (
-                      <Box columnGap={1} marginLeft={1} flexShrink={0}>
-                        {item.health && <Text color="warning">!</Text>}
-                        {/* Non-breaking spaces keep "4× · 34d ago" one word, so the row
-                            moves it whole instead of breaking it across lines. */}
-                        {use && <Text dimColor wrap="truncate-end">{`${use.count}×\u00a0·\u00a0${ago.replace(/ /g, '\u00a0')}`}</Text>}
-                      </Box>
-                    )}
-                    <Box
-                      position="absolute"
-                      top={1}
-                      marginTop={0.5}
-                      left={2}
-                      right={0}
-                      display="none"
-                      hover={{ display: 'flex' }}
-                      borderStyle="round"
-                      borderColor="suggestion"
-                      backgroundColor="inverseText"
-                      paddingX={1}
-                      flexDirection="column"
-                    >
-                      {(item.health ?? []).map(flag => <Text color="warning">{flag}</Text>)}
-                      {(item.description || !item.health) && <Text>{item.description || 'No description.'}</Text>}
-                      {origin && <Text dimColor>{origin === 'Account' ? origin : `${origin} · ${path}`}</Text>}
-                    </Box>
-                  </Box>
-                )
-              })}
-              {!closed.has(section.title) && section.items.length === 0 && <Text dimColor>none</Text>}
-              {!closed.has(section.title) && <Text dimColor>{section.folders.join(', ')}</Text>}
-              {/* The arrow toggles the section; the health count stays in view while it
-                  is collapsed. A Button here takes one string, so the bold title sits
-                  beside it rather than inside it. */}
-              <Box>
-                <Button
-                  key={`collapse:${section.title}`}
-                  plain
-                  dimColor
-                  onPress={() => setCollapsed($, section.title, !closed.has(section.title))}
-                >
-                  {/* U+FE0E keeps ▶ a text glyph rather than an emoji. */}
-                  {closed.has(section.title) ? '▶\uFE0E' : '▼'}
-                </Button>
-                <Text bold>{section.title} ({section.items.length})</Text>
-                {section.items.filter(item => item.health?.length).length > 0 && (
-                  <Text color="warning">{' '}{section.items.filter(item => item.health?.length).length} health</Text>
-                )}
-              </Box>
-            </Box>
-          ))}
+        <Box height={16} />
+        {/* One footer line, a blank line below the last section. While the import
+            runs its date would be wrong, so it says what is happening instead. */}
+        <Box marginTop={1}>
+          <Text dimColor>
+            {busy
+              ? 'Importing history…'
+              : since === Infinity
+                ? 'No uses counted yet'
+                : `Counts since ${new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`}
+          </Text>
         </Box>
+        {[...shown].reverse().map(section => (
+          <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
+            {!closed.has(section.title) && [...section.items].sort(compare).reverse().map(item => {
+              const origin = section.title === 'Starred' || section.title === 'Most used here'
+                ? list.find(source => source.items.includes(item))?.title : undefined
+              const path = home && item.target.startsWith(`${home}/`) ? `~${item.target.slice(home.length)}` : item.target
+              const use = useOf(item)
+              const age = use ? now - use.lastUsed : 0
+              const ago = age < HOUR ? 'just now' : age < DAY ? `${Math.floor(age / HOUR)}h ago` : `${Math.floor(age / DAY)}d ago`
+              const stale = use ? age >= 30 * DAY : Number.isFinite(since) && now - since >= 30 * DAY
+              return (
+                // In a narrow pane the count moves under the name as a unit instead of
+                // breaking across lines.
+                <Box key={`${section.title}:${item.target}`} flexWrap="wrap">
+                  <Button
+                    key={`open:${section.title}:${item.target}`}
+                    plain
+                    dimColor={stale}
+                    hover={{ bold: true, color: 'suggestion' }}
+                    // A link that points nowhere may still lead to a file outside every
+                    // guarded folder (a repo can aim one at ~/.ssh), so it opens nothing.
+                    onPress={() => item.health?.includes(DANGLING) ? undefined : openTarget($, item.target)}
+                  >
+                    {item.name}
+                  </Button>
+                  {/* The star sits after the name, so revealing it moves nothing. A
+                      starred item keeps its ★ in view; an unstarred one shows ☆
+                      only while its row is hovered. (A desktop draws every Button
+                      with native padding, so a star before the name could not sit
+                      any tighter than that.) */}
+                  <Box
+                    display={stars.has(item.target) ? 'flex' : 'none'}
+                    hover={stars.has(item.target) ? undefined : { display: 'flex' }}
+                  >
+                    <Button
+                      key={`star:${section.title}:${item.target}`}
+                      plain
+                      onPress={() => setStar($, item.target, !stars.has(item.target))}
+                    >
+                      {stars.has(item.target) ? '★' : '☆'}
+                    </Button>
+                  </Box>
+                  {(item.health || use) && (
+                    <Box columnGap={1} marginLeft={1} flexShrink={0}>
+                      {item.health && <Text color="warning">!</Text>}
+                      {/* Non-breaking spaces keep "4× · 34d ago" one word, so the row
+                          moves it whole instead of breaking it across lines. */}
+                      {use && <Text dimColor wrap="truncate-end">{`${use.count}×\u00a0·\u00a0${ago.replace(/ /g, '\u00a0')}`}</Text>}
+                    </Box>
+                  )}
+                  <Box
+                    position="absolute"
+                    top={1}
+                    marginTop={0.5}
+                    left={2}
+                    right={0}
+                    display="none"
+                    hover={{ display: 'flex' }}
+                    borderStyle="round"
+                    borderColor="suggestion"
+                    backgroundColor="inverseText"
+                    paddingX={1}
+                    flexDirection="column"
+                  >
+                    {(item.health ?? []).map(flag => <Text color="warning">{flag}</Text>)}
+                    {(item.description || !item.health) && <Text>{item.description || 'No description.'}</Text>}
+                    {origin && <Text dimColor>{origin === 'Account' ? origin : `${origin} · ${path}`}</Text>}
+                  </Box>
+                </Box>
+              )
+            })}
+            {!closed.has(section.title) && section.items.length === 0 && <Text dimColor>none</Text>}
+            {!closed.has(section.title) && <Text dimColor>{section.folders.join(', ')}</Text>}
+            {/* The arrow toggles the section; the health count stays in view while it
+                is collapsed. A Button here takes one string, so the bold title sits
+                beside it rather than inside it. */}
+            <Box>
+              <Button
+                key={`collapse:${section.title}`}
+                plain
+                dimColor
+                onPress={() => setCollapsed($, section.title, !closed.has(section.title))}
+              >
+                {/* U+FE0E keeps ▶ a text glyph rather than an emoji. */}
+                {closed.has(section.title) ? '▶\uFE0E' : '▼'}
+              </Button>
+              <Text bold>{section.title} ({section.items.length})</Text>
+              {section.items.filter(item => item.health?.length).length > 0 && (
+                <Text color="warning">{' '}{section.items.filter(item => item.health?.length).length} health</Text>
+              )}
+            </Box>
+          </Box>
+        ))}
         {/* One header row: the sort on the left, the selected option at full
-            strength and the others dim, and a quiet Refresh on the right. The
-            list scrolls beneath it; on the pane's own background and last in the
-            tree, it paints over the rows and cards that slide under it. */}
-        <Box key="sort-row" backgroundColor="inverseText" justifyContent="space-between">
+            strength and the others dim, and a quiet Refresh on the right. It is
+            drawn over the top row of the window, wherever the pane is scrolled
+            (a scroll is new props, so it redraws), on the pane's own background;
+            the empty row in the flow keeps the first section from starting under
+            it. Last in the tree, so it paints over every row and card. */}
+        <Box height={1} />
+        <Box
+          key="sort-row"
+          position="absolute"
+          top={e.props.scroll.offset}
+          left={0}
+          right={0}
+          backgroundColor="inverseText"
+          justifyContent="space-between"
+        >
           <Box columnGap={1}>
             <Text dimColor>Sort:</Text>
             {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
