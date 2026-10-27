@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { Elements, EngineInterface, Register } from 'claude-code'
 
-import type { History, Issue, Item, Section, Sort, Usage, Use } from '../types'
+import type { History, Issue, Item, Section, Sort, Source, Usage, Use } from '../types'
 
 const PANE = 'my-skills'
 const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
@@ -23,7 +23,36 @@ const SORT_KEY = 'sort'
 // The titles of the collapsed sections, kept in `$.store` like the stars.
 const collapsed = atom({ plugin: 'my-skills', key: 'collapsed' } as const, [])
 const COLLAPSED_KEY = 'collapsed'
-// Each flag says what is wrong and what to do about it, shown first in the hover card.
+// View state. The chip is saved like the sort; the rest lasts the session.
+const view = atom({ plugin: 'my-skills', key: 'view' } as const, null)
+const query = atom({ plugin: 'my-skills', key: 'query' } as const, '')
+const searchOpen = atom({ plugin: 'my-skills', key: 'searchOpen' } as const, false)
+const scope = atom({ plugin: 'my-skills', key: 'scope' } as const, 'Global')
+const SCOPE_KEY = 'scope'
+const showAll = atom({ plugin: 'my-skills', key: 'showAll' } as const, false)
+const showIdle = atom({ plugin: 'my-skills', key: 'showIdle' } as const, false)
+const keep = atom({ plugin: 'my-skills', key: 'keep' } as const, null)
+const confirming = atom({ plugin: 'my-skills', key: 'confirming' } as const, null)
+const SOURCES: readonly Source[] = ['Global', 'User', 'Account', 'Project']
+const FIRST_ROWS = 12
+// The health card's one-line reason for each kind it groups by source.
+const REASON: Record<Exclude<Issue['kind'], 'collision'>, string> = {
+  unmanaged: 'Not in your Global folder',
+  bare: 'No description',
+  dangling: 'Broken link',
+}
+const SORT_WORD: Record<Sort, string> = { recent: 'recent', count: 'most used', name: 'name' }
+// Only a plain skill name goes to skillshare: never a glob, a flag or one of its keywords.
+const SKILLSHARE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const GLYPHS = '▁▂▃▄▅▆▇█'
+// Line colors of the trend drawings, light then dark.
+const INK: Record<'rising' | 'steady' | 'fading' | 'no use', [string, string]> = {
+  rising: ['#4A4945', '#D4D1C8'],
+  steady: ['#4A4945', '#D4D1C8'],
+  fading: ['#A9A69C', '#8C897F'],
+  'no use': ['#D6D3CA', '#4A4945'],
+}
+// Each flag says what is wrong and what to do about it.
 const DANGLING = "Broken link: this entry points to something that isn't a skill folder. Delete the link, or point it at the skill's folder."
 const BARE = "No description: Claude can't tell when to use it. Add a description: line to the top of its file."
 const UNMANAGED = "Not in your Global folder: skillshare doesn't track it, so your other agents don't get it. Run skillshare collect claude to move it there, or delete it if it's a leftover."
@@ -70,6 +99,40 @@ export function trendWord(points: number[]): 'rising' | 'steady' | 'fading' | 'n
   if (last < first * 0.8) return 'fading'
   return 'steady'
 }
+
+// The last 30 local days' counts, oldest first; the last one is today.
+function dailyCounts(days: Record<string, number> | undefined, now: number): number[] {
+  return Array.from({ length: 30 }, (_, i) => {
+    const key = dayAgo(now, 29 - i)
+    return days && Object.hasOwn(days, key) ? days[key]! : 0
+  })
+}
+
+// A polyline over `values`, x from 1 to width − 1, y from `low` at zero to
+// `high` at the largest value; the color follows the trend word and the theme.
+function lineSvg(values: number[], width: number, height: number, high: number, low: number, word: keyof typeof INK): string {
+  const max = Math.max(...values)
+  const step = (width - 2) / (values.length - 1)
+  const points = values
+    .map((value, i) => `${(1 + i * step).toFixed(1)},${(max === 0 ? low : low - (value / max) * (low - high)).toFixed(1)}`)
+    .join(' ')
+  const [light, dark] = INK[word]
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<style>polyline{stroke:${light}}@media (prefers-color-scheme: dark){polyline{stroke:${dark}}}</style>` +
+    `<polyline points="${points}" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+}
+
+// The terminal's trend: one block glyph per value, scaled to the largest.
+function glyphs(values: number[]): string {
+  const max = Math.max(...values)
+  return values.map(value => GLYPHS[max === 0 ? 0 : Math.round((value / max) * 7)]).join('')
+}
+
+const bare = (name: string) => name.replace(/^\//, '')
+const own = <T,>(record: Record<string, T>, key: string): T | undefined => (Object.hasOwn(record, key) ? record[key] : undefined)
+const expand = (path: string, home: string) => (path.startsWith('~') ? `${home}${path.slice(1)}` : path)
+const tildeOf = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path)
+const listed = (names: string[]) => names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
 
 // The `description:` in a file's frontmatter, folded scalars (`>`, `|`) included.
 function frontmatterDescription(text: string): string {
@@ -283,6 +346,86 @@ async function refresh($: EngineInterface, globalSetting: string) {
   await update($, sort, () => order === 'count' || order === 'name' ? order : 'recent')
   const closed = await savedCollapsed($)
   await update($, collapsed, () => closed)
+  const chip = await $.store.get(SCOPE_KEY)
+  await update($, scope, () => SOURCES.find(one => one === chip) ?? 'Global')
+}
+
+// The skill's own folder, a dangling link itself, or a command's file: never
+// the folder that holds them.
+function removable(item: Item): string {
+  return item.target.endsWith('/SKILL.md') ? item.target.slice(0, -'/SKILL.md'.length) : item.target
+}
+
+const stamp = (now: number) => {
+  const date = new Date(now)
+  return `${dayKey(date)} ${pad(date.getHours())}.${pad(date.getMinutes())}.${pad(date.getSeconds())}`
+}
+
+// A Global copy in a shared skillshare folder goes through skillshare in global
+// mode (a repo with .skillshare/ would otherwise point it at the project's copy);
+// every other copy moves to the Trash under a dated name, so nothing is overwritten.
+async function removeCopy($: EngineInterface, item: Item, source: Source, globalSetting: string) {
+  const home = (await $.env.get('HOME')) ?? ''
+  const name = bare(item.name)
+  const viaSkillshare = source === 'Global' && expand(globalSetting, home) !== `${home}/.claude/skills` &&
+    SKILLSHARE_NAME.test(name) && name !== 'agents'
+  const argv = viaSkillshare
+    ? ['skillshare', 'uninstall', name, '-g', '--force']
+    : ['mv', removable(item), `${home}/.Trash/${name} ${stamp(await $.clock.now())}`]
+  let failure: string | undefined
+  try {
+    const result = await $.process.run(argv, home ? { cwd: home } : undefined)
+    if (result.exitCode !== 0) {
+      failure = result.stderr.split('\n').map(line => line.trim()).find(Boolean) ?? `${argv[0]} exited with ${result.exitCode}`
+    }
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error)
+  }
+  await update($, confirming, () => null)
+  if (failure !== undefined) {
+    $.ui.toast(failure)
+    return
+  }
+  await update($, keep, () => null)
+  $.ui.toast(viaSkillshare ? 'Removed. Commit in ~/.config/skillshare and run skillshare sync.' : 'Moved to Trash.')
+  await refresh($, globalSetting)
+}
+
+async function reveal($: EngineInterface, target: string) {
+  try {
+    if ((await $.process.run(['open', '-R', target])).exitCode === 0) return
+  } catch {
+    // Not on macOS.
+  }
+  $.ui.toast(`Could not reveal ${target}`)
+}
+
+async function copyCommand($: EngineInterface, text: string, surface: Parameters<EngineInterface['ui']['copy']>[0]['surface']) {
+  const result = await $.ui.copy({ text, surface })
+  $.ui.toast(result.isCopied ? `Copied ${text}` : `Could not copy ${text}`)
+}
+
+async function openDetail($: EngineInterface, item: Item) {
+  await update($, keep, () => null)
+  await update($, confirming, () => null)
+  await update($, view, () => ({ name: bare(item.name), target: item.target }))
+}
+
+async function closeDetail($: EngineInterface) {
+  await update($, keep, () => null)
+  await update($, confirming, () => null)
+  await update($, view, () => null)
+}
+
+async function setScope($: EngineInterface, source: Source) {
+  if (await $.store.get(SCOPE_KEY) !== source) await $.store.set(SCOPE_KEY, source)
+  await update($, showAll, () => false)
+  await update($, scope, () => source)
+}
+
+async function setSearch($: EngineInterface, isOpen: boolean) {
+  if (!isOpen) await update($, query, () => '')
+  await update($, searchOpen, () => isOpen)
 }
 
 async function savedCollapsed($: EngineInterface): Promise<string[]> {
@@ -529,7 +672,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'my-skills',
-      description: 'Show your skills and commands: starred, global, user, project, account',
+      description: 'Open the My skills pane: health, search, starred, and every skill by source',
     })
     await refresh($, globalDir)
     // `importing` is shared state and outlives a reload, which cancels this load's
@@ -552,182 +695,450 @@ export const register: Register = (on, options) => {
     return { text: 'My skills pane opened.' }
   })
 
-  // A floating card is painted over whatever comes before it in the tree, so each
-  // list is written bottom-up and laid out with column-reverse: the rows a card
-  // drops over come earlier in the tree than the card itself. The spacer at the
-  // end leaves the last row's card room to show inside the pane: a card that
-  // sticks out past it grows the scroll area, the pane jumps, the hover drops
-  // and the card flickers, so it is sized for a card with flags.
+  // Two views in one pane: the list (header, search, health card, sort, Active
+  // here, Starred, All skills) and one skill's detail. Every Button holds one
+  // string and a key of its own; rows are keyed by list and target, so the same
+  // skill in two lists is two controls.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
+    // No Svg on the terminal, no Input on mobile.
+    const Svg = e.surface === 'terminal' ? undefined : ($.ui.resolve(e) as Elements['desktop']).Svg
+    const Input = e.surface === 'mobile' ? undefined : ($.ui.resolve(e) as Elements['desktop']).Input
     const list = await read($, sections)
     const stars = new Set(await read($, starred))
     const saved = await read($, usage)
     const imported = await read($, history)
     const busy = await read($, importing)
-    const since = Math.min(saved.since ?? Infinity, imported.oldest ?? Infinity)
     const order = await read($, sort)
     const closed = new Set(await read($, collapsed))
+    const opened = await read($, view)
+    const isSearching = Input ? await read($, searchOpen) : false
+    const text = isSearching ? await read($, query) : ''
     const home = (await $.env.get('HOME')) ?? ''
     const now = await $.clock.now()
-    const useOf = (item: Item) => {
-      const name = item.name.replace(/^\//, '')
-      const live = Object.hasOwn(saved.byName, name) ? saved.byName[name] : undefined
-      const past = Object.hasOwn(imported.byName, name) ? imported.byName[name] : undefined
+    const since = Math.min(saved.since ?? Infinity, imported.oldest ?? Infinity)
+
+    const all = list.flatMap(section => section.items)
+    const sourceOf = new Map<Item, Source>(list.flatMap(section => section.items.map(item => [item, section.title as Source] as const)))
+    const useOf = (item: Item): Use | undefined => {
+      const name = bare(item.name)
+      const live = own(saved.byName, name)
+      const past = own(imported.byName, name)
       if (!live) return past
       if (!past) return live
-      const byWorkspace = { ...live.byWorkspace }
-      for (const [key, count] of Object.entries(past.byWorkspace)) byWorkspace[key] = (Object.hasOwn(byWorkspace, key) ? byWorkspace[key]! : 0) + count
-      return { count: live.count + past.count, lastUsed: Math.max(live.lastUsed, past.lastUsed), byWorkspace }
+      const byWorkspace = { ...past.byWorkspace }
+      for (const [key, count] of Object.entries(live.byWorkspace)) byWorkspace[key] = (own(byWorkspace, key) ?? 0) + count
+      const days = { ...past.days }
+      for (const [key, count] of Object.entries(live.days ?? {})) days[key] = (own(days, key) ?? 0) + count
+      return { count: live.count + past.count, lastUsed: Math.max(live.lastUsed, past.lastUsed), byWorkspace, days }
     }
     const compare = (a: Item, b: Item) => {
-      const metric = order === 'recent' ? 'lastUsed' : 'count'
-      return (order === 'name' ? 0 : (useOf(b)?.[metric] ?? -Infinity) - (useOf(a)?.[metric] ?? -Infinity)) || a.name.localeCompare(b.name)
+      const byName = a.name.localeCompare(b.name)
+      if (order === 'name') return byName
+      const first = useOf(a)
+      const second = useOf(b)
+      const uses = (second?.count ?? 0) - (first?.count ?? 0)
+      if (order === 'count') return uses || byName
+      const recent = (second?.lastUsed ?? -Infinity) - (first?.lastUsed ?? -Infinity)
+      return (Number.isNaN(recent) ? 0 : recent) || uses || byName
     }
-    const starredItems = list
-      .flatMap(section => section.items)
-      .filter(item => stars.has(item.target))
-    const root = await mainRepo($, await $.session.root())
-    const inRepo = list
-      .flatMap(section => section.items)
-      .filter(item => (useOf(item)?.byWorkspace[root] ?? 0) > 0)
-      .sort((a, b) => (useOf(b)?.byWorkspace[root] ?? 0) - (useOf(a)?.byWorkspace[root] ?? 0) || a.name.localeCompare(b.name))
-      .slice(0, 5)
-    const total = inRepo.reduce((sum, item) => sum + (useOf(item)?.byWorkspace[root] ?? 0), 0)
-    const shown: Section[] = [
-      ...(total >= 5 ? [{ title: 'Most used here', folders: [`Most used in ${root}`], items: inRepo }] : []),
-      { title: 'Starred', folders: ['Click ☆ beside a name to star it'], items: starredItems },
-      ...list,
-    ]
+    const sorted = (items: Item[]) => [...items].sort(compare)
+    const ago = (use: Use | undefined) => {
+      if (!use) return 'never'
+      const age = now - use.lastUsed
+      return age < HOUR ? 'now' : age < DAY ? `${Math.floor(age / HOUR)}h` : `${Math.floor(age / DAY)}d`
+    }
+    const close = () => $.ui.close({ id: PANE })
 
-    return (
-      <Box flexDirection="column-reverse">
-        <Box height={16} />
-        {/* One footer line, a blank line below the last section. While the import
-            runs its date would be wrong, so it says what is happening instead. */}
-        <Box marginTop={1}>
-          <Text dimColor>
-            {busy
-              ? 'Importing history…'
-              : since === Infinity
-                ? 'No uses counted yet'
-                : `Counts since ${new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`}
-          </Text>
-        </Box>
-        {[...shown].reverse().map(section => (
-          <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
-            {!closed.has(section.title) && [...section.items].sort(compare).reverse().map(item => {
-              const origin = section.title === 'Starred' || section.title === 'Most used here'
-                ? list.find(source => source.items.includes(item))?.title : undefined
-              const path = home && item.target.startsWith(`${home}/`) ? `~${item.target.slice(home.length)}` : item.target
-              const use = useOf(item)
-              const age = use ? now - use.lastUsed : 0
-              const ago = age < HOUR ? 'just now' : age < DAY ? `${Math.floor(age / HOUR)}h ago` : `${Math.floor(age / DAY)}d ago`
-              const stale = use ? age >= 30 * DAY : Number.isFinite(since) && now - since >= 30 * DAY
-              return (
-                // In a narrow pane the count moves under the name as a unit instead of
-                // breaking across lines.
-                <Box key={`${section.title}:${item.target}`} flexWrap="wrap">
-                  <Button
-                    key={`open:${section.title}:${item.target}`}
-                    plain
-                    dimColor={stale}
-                    hover={{ bold: true, color: 'suggestion' }}
-                    // A link that points nowhere may still lead to a file outside every
-                    // guarded folder (a repo can aim one at ~/.ssh), so it opens nothing.
-                    onPress={() => isDangling(item) ? undefined : openTarget($, item.target)}
-                  >
-                    {item.name}
-                  </Button>
-                  {/* The star sits after the name, so revealing it moves nothing. A
-                      starred item keeps its ★ in view; an unstarred one shows ☆
-                      only while its row is hovered. (A desktop draws every Button
-                      with native padding, so a star before the name could not sit
-                      any tighter than that.) */}
-                  <Box
-                    display={stars.has(item.target) ? 'flex' : 'none'}
-                    hover={stars.has(item.target) ? undefined : { display: 'flex' }}
-                  >
-                    <Button
-                      key={`star:${section.title}:${item.target}`}
-                      plain
-                      onPress={() => setStar($, item.target, !stars.has(item.target))}
-                    >
-                      {stars.has(item.target) ? '★' : '☆'}
-                    </Button>
-                  </Box>
-                  {(item.issues || use) && (
-                    <Box columnGap={1} marginLeft={1} flexShrink={0}>
-                      {item.issues && <Text color="warning">!</Text>}
-                      {/* Non-breaking spaces keep "4× · 34d ago" one word, so the row
-                          moves it whole instead of breaking it across lines. */}
-                      {use && <Text dimColor wrap="truncate-end">{`${use.count}×\u00a0·\u00a0${ago.replace(/ /g, '\u00a0')}`}</Text>}
-                    </Box>
-                  )}
-                  <Box
-                    position="absolute"
-                    top={1}
-                    marginTop={0.5}
-                    left={2}
-                    right={0}
-                    display="none"
-                    hover={{ display: 'flex' }}
-                    borderStyle="round"
-                    borderColor="suggestion"
-                    backgroundColor="inverseText"
-                    paddingX={1}
-                    flexDirection="column"
-                  >
-                    {(item.issues ?? []).map(flag => <Text color="warning">{flag.text}</Text>)}
-                    {(item.description || !item.issues) && <Text>{item.description || 'No description.'}</Text>}
-                    {origin && <Text dimColor>{origin === 'Account' ? origin : `${origin} · ${path}`}</Text>}
-                  </Box>
-                </Box>
-              )
-            })}
-            {!closed.has(section.title) && section.items.length === 0 && <Text dimColor>none</Text>}
-            {!closed.has(section.title) && <Text dimColor>{section.folders.join(', ')}</Text>}
-            {/* The arrow toggles the section; the health count stays in view while it
-                is collapsed. A Button here takes one string, so the bold title sits
-                beside it rather than inside it. */}
-            <Box>
-              <Button
-                key={`collapse:${section.title}`}
-                plain
-                dimColor
-                onPress={() => setCollapsed($, section.title, !closed.has(section.title))}
-              >
-                {/* U+FE0E keeps ▶ a text glyph rather than an emoji. */}
-                {closed.has(section.title) ? '▶\uFE0E' : '▼'}
+    const footer = (
+      <Box key="footer" marginTop={1}>
+        <Text dimColor>
+          {busy
+            ? 'Importing history…'
+            : since === Infinity
+              ? 'No uses counted yet'
+              : `Uses since ${new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`}
+        </Text>
+      </Box>
+    )
+
+    // One row, the same in every list: star, name (and ! when flagged), trend,
+    // uses, age. The name opens the detail view.
+    const row = (where: string, item: Item, withSource = false) => {
+      const use = useOf(item)
+      const points = trendPoints(use?.days, now)
+      const word = trendWord(points)
+      const isStarred = stars.has(item.target)
+      return (
+        <Box key={`row:${where}:${item.target}`} flexDirection="column">
+          <Box key={`line:${where}:${item.target}`} columnGap={1} alignItems="center">
+            <Button key={`star:${where}:${item.target}`} plain dimColor={!isStarred} onPress={() => setStar($, item.target, !isStarred)}>
+              {isStarred ? '★' : '☆'}
+            </Button>
+            <Box flexGrow={1} flexShrink={1} columnGap={1}>
+              <Button key={`open:${where}:${item.target}`} plain dimColor={!use} onPress={() => openDetail($, item)}>
+                {item.name}
               </Button>
-              <Text bold>{section.title} ({section.items.length})</Text>
-              {section.items.filter(item => item.issues?.length).length > 0 && (
-                <Text color="warning">{' '}{section.items.filter(item => item.issues?.length).length} health</Text>
-              )}
+              {item.issues && <Text color="warning">!</Text>}
+            </Box>
+            {Svg
+              ? <Svg source={lineSvg(points, 44, 18, 3, 16, word)} alt={`30-day trend: ${word}`} width={44} height={18} />
+              : <Text dimColor>{glyphs(points)}</Text>}
+            <Box width={5} justifyContent="flex-end" flexShrink={0}>
+              <Text>{use ? `${use.count}×` : '—'}</Text>
+            </Box>
+            <Box width={5} justifyContent="flex-end" flexShrink={0}>
+              <Text dimColor>{ago(use)}</Text>
             </Box>
           </Box>
-        ))}
-        {/* One header row: the sort options in a box of their own, so they read
-            as controls rather than as the list's first row, the selected option
-            at full strength and the others dim; a quiet Refresh on the right. */}
-        <Box key="sort-row" justifyContent="space-between" alignItems="center">
-          <Box key="sort-options" columnGap={1} borderStyle="round" borderColor="subtle" paddingX={1}>
-            <Text dimColor>Sort:</Text>
-            {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
-              <Button
-                key={`sort:${value}`}
-                plain
-                dimColor={order !== value}
-                onPress={() => setSort($, value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </Box>
-          <Button key="refresh" plain dimColor onPress={() => refresh($, globalDir)}>
-            Refresh
-          </Button>
+          {withSource && <Box paddingLeft={2}><Text dimColor>{sourceOf.get(item) ?? ''}</Text></Box>}
         </Box>
+      )
+    }
+
+    // The header of a collapsible section: arrow, bold title, dim note and count.
+    const heading = (title: string, note: string, count: number) => (
+      <Box key={`heading:${title}`} columnGap={1}>
+        <Button key={`collapse:${title}`} plain dimColor onPress={() => setCollapsed($, title, !closed.has(title))}>
+          {/* U+FE0E keeps ▶ a text glyph rather than an emoji. */}
+          {closed.has(title) ? '▶︎' : '▼'}
+        </Button>
+        <Text bold>{title}</Text>
+        {note !== '' && <Text dimColor wrap="truncate-middle">{note}</Text>}
+        <Text dimColor>{String(count)}</Text>
+      </Box>
+    )
+
+    const copies = opened ? all.filter(item => bare(item.name) === opened.name) : []
+    const shown = copies.find(item => item.target === opened?.target) ?? copies[0]
+
+    // DETAIL VIEW
+    if (opened && shown) {
+      const name = opened.name
+      const use = useOf(shown)
+      const word = trendWord(trendPoints(use?.days, now))
+      const daily = dailyCounts(use?.days, now)
+      const isStarred = stars.has(shown.target)
+      const count = use?.count ?? 0
+      const countOf = new Map<string, number>()
+      for (const item of all) countOf.set(bare(item.name), useOf(item)?.count ?? 0)
+      const rank = 1 + [...countOf.values()].filter(other => other > count).length
+      const sources = [...new Set(copies.map(item => sourceOf.get(item)))].filter((one): one is Source => one !== undefined)
+      const hasCollision = shown.issues?.some(issue => issue.kind === 'collision') ?? false
+      const kept = await read($, keep)
+      const asking = await read($, confirming)
+      const keptTarget = copies.some(item => item.target === kept) ? kept : null
+      const isAccount = sourceOf.get(shown) === 'Account'
+      const age = ago(use)
+      const numbers = ['', '', 'Two', 'Three', 'Four']
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          <Box key="detail-header" justifyContent="space-between">
+            <Button key="back" plain dimColor onPress={() => closeDetail($)}>‹ Skills</Button>
+            <Button key="close" plain dimColor onPress={close}>Close</Button>
+          </Box>
+          <Box flexDirection="column">
+            <Box key="title" columnGap={1} alignItems="center">
+              <Text bold>{shown.name}</Text>
+              <Button key={`star:detail:${shown.target}`} plain dimColor={!isStarred} onPress={() => setStar($, shown.target, !isStarred)}>
+                {isStarred ? '★' : '☆'}
+              </Button>
+            </Box>
+            <Box key="chips" columnGap={1} flexWrap="wrap">
+              <Text color="suggestion">{`/${name}`}</Text>
+              {sources.map(source => <Text dimColor>{source}</Text>)}
+            </Box>
+          </Box>
+          <Box key="stats" columnGap={1}>
+            {([['uses', String(count)], ['last used', age === 'never' || age === 'now' ? age : `${age} ago`], ['rank', count > 0 ? `#${rank}` : '—']] as const)
+              .map(([label, value]) => (
+                <Box key={`stat:${label}`} flexDirection="column" flexGrow={1} borderStyle="round" borderColor="subtle" paddingX={1}>
+                  <Text dimColor>{label}</Text>
+                  <Text bold>{value}</Text>
+                </Box>
+              ))}
+          </Box>
+          <Box key="chart" flexDirection="column">
+            <Box justifyContent="space-between">
+              <Text bold>Last 30 days</Text>
+              <Text dimColor>{word}</Text>
+            </Box>
+            {Svg
+              ? <Svg source={lineSvg(daily, 340, 56, 4, 52, word)} alt={`Uses per day over the last 30 days: ${word}`} />
+              : <Text dimColor>{glyphs(daily)}</Text>}
+            <Box justifyContent="space-between">
+              <Text dimColor>30d ago</Text>
+              <Text dimColor>Today</Text>
+            </Box>
+          </Box>
+          {hasCollision && copies.length > 1 && (
+            <Box key="collision" flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={1}>
+              <Box flexDirection="column">
+                <Text color="warning" bold>{`${numbers[copies.length] ?? copies.length} skills answer to /${name}`}</Text>
+                <Text>Claude may load either one. Pick the copy to keep.</Text>
+              </Box>
+              <Box flexDirection="column">
+                {copies.map(copy => {
+                  const source = sourceOf.get(copy) ?? 'Global'
+                  const isKept = keptTarget === copy.target
+                  return (
+                    <Box key={`copy:${copy.target}`} columnGap={1} flexWrap="wrap">
+                      <Button key={`keep:${copy.target}`} dimColor={keptTarget !== null && !isKept} onPress={() => update($, keep, () => copy.target)}>
+                        {isKept ? `Keep ${source}` : source}
+                      </Button>
+                      <Text dimColor wrap="truncate-middle">{source === 'Account' ? 'claude.ai › Customize › Skills' : tildeOf(copy.target, home)}</Text>
+                    </Box>
+                  )
+                })}
+              </Box>
+              {keptTarget !== null && copies.filter(copy => copy.target !== keptTarget).map(copy => {
+                const source = sourceOf.get(copy) ?? 'Global'
+                if (source === 'Account') {
+                  return (
+                    <Button key={`customize:${copy.target}`} onPress={() => openTarget($, copy.target)}>
+                      Open Customize › Skills
+                    </Button>
+                  )
+                }
+                if (asking === copy.target) {
+                  return (
+                    <Box key={`ask:${copy.target}`} columnGap={1} flexWrap="wrap" alignItems="center">
+                      <Text>{`Move the ${source} copy to trash?`}</Text>
+                      <Button key="confirm-remove" variant="primary" onPress={() => removeCopy($, copy, source, globalDir)}>Confirm</Button>
+                      <Button key="cancel-remove" onPress={() => update($, confirming, () => null)}>Cancel</Button>
+                    </Box>
+                  )
+                }
+                return (
+                  <Button key={`remove:${copy.target}`} variant="primary" onPress={() => update($, confirming, () => copy.target)}>
+                    {`Remove ${source} copy`}
+                  </Button>
+                )
+              })}
+            </Box>
+          )}
+          {/* Every other flag says what is wrong and what to do about it. */}
+          {shown.issues?.some(issue => issue.kind !== 'collision') && (
+            <Box key="issues" flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1}>
+              {shown.issues.filter(issue => issue.kind !== 'collision').map(issue => <Text color="warning">{issue.text}</Text>)}
+            </Box>
+          )}
+          <Box key="description" flexDirection="column">
+            <Text bold>Description</Text>
+            <Text>{shown.description || 'No description.'}</Text>
+          </Box>
+          <Box key="actions" flexDirection="column" alignItems="flex-start">
+            {/* A link that points nowhere may still lead to a file outside every
+                guarded folder (a repo can aim one at ~/.ssh), so it opens nothing. */}
+            {!isDangling(shown) && (
+              <Button key="open-file" plain onPress={() => openTarget($, shown.target)}>
+                {isAccount ? 'Open Customize › Skills' : shown.target.endsWith('/SKILL.md') ? 'Open SKILL.md' : 'Open file'}
+              </Button>
+            )}
+            <Button key="copy" plain onPress={press => copyCommand($, `/${name}`, press.surface)}>{`Copy /${name}`}</Button>
+            {!isAccount && <Button key="reveal" plain onPress={() => reveal($, shown.target)}>Reveal in Finder</Button>}
+          </Box>
+          {footer}
+        </Box>
+      )
+    }
+
+    // LIST VIEW
+    const header = (
+      <Box key="header" justifyContent="space-between" alignItems="center">
+        <Box columnGap={1}>
+          <Text bold>Skills</Text>
+          <Text dimColor>{String(all.length)}</Text>
+        </Box>
+        <Box columnGap={1}>
+          {Input && <Button key="search" plain dimColor={!isSearching} onPress={() => setSearch($, !isSearching)}>Search</Button>}
+          <Button key="refresh" plain dimColor onPress={() => refresh($, globalDir)}>Refresh</Button>
+          <Button key="close" plain dimColor onPress={close}>Close</Button>
+        </Box>
+      </Box>
+    )
+    const field = Input && isSearching && (
+      <Box key="search-row" columnGap={1} alignItems="center">
+        <Box flexGrow={1}>
+          <Input
+            key="query"
+            placeholder="Search skills"
+            value={text}
+            onInput={value => void update($, query, () => value)}
+            onSubmit={value => void update($, query, () => value)}
+          />
+        </Box>
+        {text !== '' && <Button key="clear-search" plain dimColor onPress={() => update($, query, () => '')}>Clear</Button>}
+      </Box>
+    )
+
+    // While the query holds text, its results replace everything below the field.
+    const needle = text.trim().toLowerCase()
+    if (needle !== '') {
+      const matches = sorted(all.filter(item =>
+        item.name.toLowerCase().includes(needle) ||
+        (sourceOf.get(item) ?? '').toLowerCase().includes(needle) ||
+        item.description.toLowerCase().includes(needle)))
+      return (
+        <Box flexDirection="column" rowGap={1}>
+          {header}
+          {field}
+          <Box key="results" flexDirection="column">
+            <Text dimColor>
+              {matches.length === 0
+                ? `No skills match "${text.trim()}"`
+                : `${matches.length} ${matches.length === 1 ? 'match' : 'matches'} across all sources · by ${SORT_WORD[order]}`}
+            </Text>
+            {matches.map(item => row('Search', item, true))}
+          </Box>
+          {footer}
+        </Box>
+      )
+    }
+
+    // Health card: one row per colliding name, one per kind of other issue and source.
+    const flaggedNames = new Set(all.filter(item => item.issues?.length).map(item => bare(item.name)))
+    const collisions = new Map<string, Source[]>()
+    const groups = new Map<string, { kind: Exclude<Issue['kind'], 'collision'>; source: Source; count: number }>()
+    for (const item of all) {
+      const source = sourceOf.get(item) ?? 'Global'
+      for (const kind of new Set((item.issues ?? []).map(issue => issue.kind))) {
+        if (kind === 'collision') {
+          const name = bare(item.name)
+          collisions.set(name, [...new Set([...(collisions.get(name) ?? []), source])])
+        } else {
+          const group = groups.get(`${kind}:${source}`) ?? { kind, source, count: 0 }
+          groups.set(`${kind}:${source}`, { ...group, count: group.count + 1 })
+        }
+      }
+    }
+    const healthRow = (key: string, title: string, note: string, action: string, onPress: () => unknown) => (
+      <Box key={`health:${key}`} justifyContent="space-between" alignItems="center" columnGap={1}>
+        <Box flexDirection="column" flexShrink={1}>
+          <Text>{title}</Text>
+          <Text dimColor>{note}</Text>
+        </Box>
+        <Button key={`${action.toLowerCase()}:${key}`} plain onPress={() => void onPress()}>{action}</Button>
+      </Box>
+    )
+    const health = flaggedNames.size > 0 && (
+      <Box key="health" flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1}>
+        <Text color="warning" bold>{`${flaggedNames.size} ${flaggedNames.size === 1 ? 'skill needs' : 'skills need'} attention`}</Text>
+        {[...collisions].map(([name, names]) => {
+          const first = all.find(item => bare(item.name) === name)
+          return healthRow(name, name, `Name collision · ${listed(names)}`, 'Fix', () => first && openDetail($, first))
+        })}
+        {[...groups.values()].map(group => healthRow(
+          `${group.kind}:${group.source}`,
+          `${group.count} ${group.source} ${group.count === 1 ? 'skill' : 'skills'}`,
+          REASON[group.kind],
+          'Review',
+          () => setScope($, group.source),
+        ))}
+      </Box>
+    )
+
+    // One header row: the sort options in a box of their own, so they read as
+    // controls rather than as the list's first row; the selected one at full strength.
+    const sorter = (
+      <Box key="sort-row">
+        <Box key="sort-options" columnGap={1} borderStyle="round" borderColor="subtle" paddingX={1}>
+          <Text dimColor>Sort</Text>
+          {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
+            <Button key={`sort:${value}`} plain dimColor={order !== value} onPress={() => setSort($, value)}>
+              {label}
+            </Button>
+          ))}
+        </Box>
+      </Box>
+    )
+
+    // Active here: the five skills used most in this repository, once they add up to five uses.
+    const root = await mainRepo($, await $.session.root())
+    const hereCount = (item: Item) => own(useOf(item)?.byWorkspace ?? {}, root) ?? 0
+    const top = all
+      .filter(item => hereCount(item) > 0)
+      .sort((a, b) => hereCount(b) - hereCount(a) || a.name.localeCompare(b.name))
+      .slice(0, 5)
+    const here = top.reduce((sum, item) => sum + hereCount(item), 0) >= 5 ? sorted(top) : []
+    const active = here.length > 0 && (
+      <Box key="section:Active here" flexDirection="column">
+        {heading('Active here', tildeOf(root, home), here.length)}
+        {!closed.has('Active here') && here.map(item => row('Active here', item))}
+      </Box>
+    )
+
+    // Starred: the ones used in the last 30 days, the idle ones folded under one button.
+    const starredItems = sorted(all.filter(item => stars.has(item.target)))
+    const isIdle = (item: Item) => {
+      const use = useOf(item)
+      return !use || now - use.lastUsed >= 30 * DAY
+    }
+    const idle = starredItems.filter(isIdle)
+    const isIdleShown = idle.length > 0 && await read($, showIdle)
+    const starSection = (
+      <Box key="section:Starred" flexDirection="column">
+        {heading('Starred', '', starredItems.length)}
+        {!closed.has('Starred') && (
+          <Box flexDirection="column">
+            {starredItems.length === 0 && <Text dimColor>Press ☆ beside a name to star it</Text>}
+            {starredItems.filter(item => !isIdle(item)).map(item => row('Starred', item))}
+            {idle.length > 0 && (
+              <Button key="idle" plain dimColor onPress={() => update($, showIdle, () => !isIdleShown)}>
+                {`${idle.length} idle · no use in 30+ days · ${isIdleShown ? 'Hide' : 'Show'}`}
+              </Button>
+            )}
+            {isIdleShown && idle.map(item => row('Starred', item))}
+          </Box>
+        )}
+      </Box>
+    )
+
+    // All skills: one source at a time, picked by chip, the first twelve then the rest on request.
+    const chip = await read($, scope)
+    const isAll = await read($, showAll)
+    const picked = list.find(section => section.title === chip)
+    const rows = sorted(picked?.items ?? [])
+    const everything = (
+      <Box key="section:All skills" flexDirection="column">
+        <Box justifyContent="space-between">
+          <Text bold>All skills</Text>
+          <Text dimColor>{`by ${SORT_WORD[order]}`}</Text>
+        </Box>
+        <Box key="chips" columnGap={2} flexWrap="wrap">
+          {SOURCES.map(source => {
+            const items = list.find(section => section.title === source)?.items ?? []
+            return (
+              <Box key={`chip-box:${source}`}>
+                <Button key={`chip:${source}`} plain dimColor={chip !== source} onPress={() => setScope($, source)}>
+                  {`${source} ${items.length}`}
+                </Button>
+                {items.some(item => item.issues?.length) && <Text color="warning">•</Text>}
+              </Box>
+            )
+          })}
+        </Box>
+        <Text dimColor>{picked?.folders.join(' · ') ?? ''}</Text>
+        {rows.length === 0 && <Text dimColor>none</Text>}
+        {(isAll ? rows : rows.slice(0, FIRST_ROWS)).map(item => row('All', item))}
+        {!isAll && rows.length > FIRST_ROWS && (
+          <Button key="show-all" plain dimColor onPress={() => update($, showAll, () => true)}>
+            {`Show all ${rows.length}`}
+          </Button>
+        )}
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column" rowGap={1}>
+        {header}
+        {field}
+        {health}
+        {sorter}
+        {active}
+        {starSection}
+        {everything}
+        {footer}
       </Box>
     )
   })

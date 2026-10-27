@@ -32,7 +32,7 @@ const DIRS: Record<string, any[]> = {
   '/home/u/.claude/skills/synced': [{ name: 'b1', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
 }
 
-test('four sections, clicks open the file or the Customize page', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+test('four sources by chip, rows open the detail view, which opens the file or the Customize page', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   mock.clock(on)
   const opened: string[][] = []
   mock.store(on)
@@ -55,23 +55,38 @@ test('four sections, clicks open the file or the Customize page', { options: { g
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
 
+  const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
+  const talk = 'claude://claude.ai/customize/skills/yours/id/skill_01ABC'
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ key: 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
-    expect(await ui.find({ key: 'open:User:/home/u/.claude/skills/synced/SKILL.md' })).toBeUndefined()
-    expect(await ui.find({ key: 'open:Account:claude://claude.ai/customize/skills/yours/id/pdf' })).toBeUndefined()
-    expect((await ui.find({ type: 'Text', text: /User \(/ }))?.text).toBe('User (0)')
-    expect((await ui.find({ type: 'Text', text: /Account \(/ }))?.text).toBe('Account (1)')
-    expect((await ui.find({ type: 'Text', text: /Project \(/ }))?.text).toBe('Project (1)')
-    expect(await ui.find({ key: 'open:Project:/proj/.claude/skills/good/SKILL.md' })).toBeDefined()
-    expect(await ui.find({ key: 'open:Project:/proj/.claude/skills/evil/SKILL.md' })).toBeUndefined()
-    expect(await ui.find({ key: 'open:Account:claude://claude.ai/customize/skills/yours/id/skill_x/../settings' })).toBeUndefined()
-    await ui.press({ key: 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' })
-    await ui.press({ key: 'open:Account:claude://claude.ai/customize/skills/yours/id/skill_01ABC' })
+    expect((await ui.find({ key: 'chip:Global' }))?.text).toBe('Global 1')
+    expect((await ui.find({ key: 'chip:User' }))?.text).toBe('User 0')
+    expect((await ui.find({ key: 'chip:Account' }))?.text).toBe('Account 1')
+    expect((await ui.find({ key: 'chip:Project' }))?.text).toBe('Project 1')
+    expect(await ui.find({ key: `open:All:${verify}` })).toBeDefined()
+    await ui.press({ key: 'chip:Project' })
+    expect(await ui.find({ key: 'open:All:/proj/.claude/skills/good/SKILL.md' })).toBeDefined()
+    expect(await ui.find({ key: 'open:All:/proj/.claude/skills/evil/SKILL.md' })).toBeUndefined()
+    await ui.press({ key: 'chip:Account' })
+    expect(await ui.find({ key: 'open:All:claude://claude.ai/customize/skills/yours/id/pdf' })).toBeUndefined()
+    expect(await ui.find({ key: 'open:All:claude://claude.ai/customize/skills/yours/id/skill_x/../settings' })).toBeUndefined()
+    await ui.press({ key: 'chip:Global' })
+    // A row opens the detail view; its first action opens the file.
+    await ui.press({ key: `open:All:${verify}` })
+    expect((await ui.find({ key: 'open-file' }))?.text).toBe('Open SKILL.md')
+    expect((await ui.find({ type: 'Text', text: 'Checks the work twice.' }))).toBeDefined()
+    await ui.press({ key: 'open-file' })
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'chip:Account' })
+    await ui.press({ key: `open:All:${talk}` })
+    expect(await ui.find({ key: 'reveal' })).toBeUndefined()
+    await ui.press({ key: 'open-file' })
+    await ui.press({ key: 'back' })
+    await ui.press({ key: 'chip:Global' })
     await ui.unmount()
   }
-  const file = ['open', '-t', '/home/u/.config/skillshare/skills/verify/SKILL.md']
-  const link = ['open', 'claude://claude.ai/customize/skills/yours/id/skill_01ABC']
+  const file = ['open', '-t', verify]
+  const link = ['open', talk]
   expect(opened).toEqual([file, link, file, link])
   expect(reads).not.toContain('/proj/.claude/skills/evil/SKILL.md')
   expect(reads).toContain('/proj/.claude/skills/good/SKILL.md')
@@ -90,23 +105,25 @@ test('stars move a skill into Starred and survive a new session', { options: { g
   on('fs.read', (_, e: any) => (e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  const count = async (ui: any) => (await ui.find({ type: 'Text', text: /Starred \(/ }))?.text
+  const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
+  // verify was never used, so once starred it sits in the idle fold.
+  const idle = async (ui: any) => (await ui.find({ key: 'idle' }))?.text
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await count(ui)).toBe('Starred (0)')
-    await ui.press({ key: 'star:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' })
-    expect(await count(ui)).toBe('Starred (1)')
-    expect(await ui.find({ key: 'open:Starred:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: 'Global · ~/.config/skillshare/skills/verify/SKILL.md' }))?.props.dimColor).toBe(true)
+    expect(await idle(ui)).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /^Press ☆/ })).toBeDefined()
+    await ui.press({ key: `star:All:${verify}` })
+    expect(await idle(ui)).toBe('1 idle · no use in 30+ days · Show')
+    expect((await ui.find({ key: `star:All:${verify}` }))?.text).toBe('★')
     await ui.unmount()
 
-    // A new session reloads stars from the store; without the store write it would show 0.
+    // A new session reloads stars from the store; without the store write it would show none.
     await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
     const again = await $.ui.mount({ ...PANE, surface })
-    expect(await count(again)).toBe('Starred (1)')
-    await again.press({ key: 'star:Starred:/home/u/.config/skillshare/skills/verify/SKILL.md' })
-    expect(await count(again)).toBe('Starred (0)')
+    expect(await idle(again)).toBe('1 idle · no use in 30+ days · Show')
+    await again.press({ key: `star:All:${verify}` })
+    expect(await idle(again)).toBeUndefined()
     await again.unmount()
   }
 })
@@ -128,19 +145,19 @@ test('stars another thread saved are kept and shown', { options: { globalSkillsD
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
-  const count = async (ui: any) => (await ui.find({ type: 'Text', text: /Starred \(/ }))?.text
+  const star = async (ui: any) => (await ui.find({ key: `star:All:${verify}` }))?.text
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await count(ui)).toBe('Starred (0)')
+  expect(await star(ui)).toBe('☆')
 
   // Starring here keeps what the other thread starred meanwhile.
   disk.starred = ['/elsewhere/SKILL.md']
-  await ui.press({ key: `star:Global:${verify}` })
+  await ui.press({ key: `star:All:${verify}` })
   expect(disk.starred).toEqual(['/elsewhere/SKILL.md', verify])
 
   // Refresh shows the other thread's change.
   disk.starred = ['/elsewhere/SKILL.md']
   await ui.press({ key: 'refresh' })
-  expect(await count(ui)).toBe('Starred (0)')
+  expect(await star(ui)).toBe('☆')
   await ui.unmount()
 })
 
@@ -182,9 +199,10 @@ test('counts a use, shows it on the row, and leaves the prompt untouched', { opt
   expect(disk.usage.byName.bad).toBeUndefined()
   expect(disk.usage.since).toBe(40 * DAY)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /2×\s·\s3d\sago/ })).toBeDefined()
-  expect((await ui.find({ key: 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' }))?.props.dimColor).toBeFalsy()
-  expect((await ui.find({ type: 'Text', text: /^Counts since / }))?.text).toContain('preloads included')
+  expect(await ui.find({ type: 'Text', text: '2×' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '3d' })).toBeDefined()
+  expect((await ui.find({ key: 'open:All:/home/u/.config/skillshare/skills/verify/SKILL.md' }))?.props.dimColor).toBeFalsy()
+  expect((await ui.find({ type: 'Text', text: /^Uses since / }))?.text).toContain('preloads included')
   await ui.unmount()
 })
 
@@ -219,22 +237,34 @@ test('health flags a dangling link, a bare skill and a name collision, without r
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  expect((await ui.find({ type: 'Text', text: /User \(/ }))?.text).toBe('User (3)')
-  expect(await ui.find({ type: 'Text', text: /3 health/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /1 health/ })).toBeDefined()
-  // Each flag reads as a warning that says what is wrong and what to do.
-  for (const flag of [/^No description: .*Add a description: line/, /^Not in your Global folder: .*skillshare collect/,
-    /^Broken link: .*Delete the link/, /^Same name in Global: both answer to \/verify.*Rename or remove one/]) {
+  expect((await ui.find({ key: 'chip:User' }))?.text).toBe('User 3')
+  // gone, mine and verify: three names, one row for the collision and one per kind in User.
+  expect((await ui.find({ type: 'Text', text: /need attention$/ }))?.text).toBe('3 skills need attention')
+  expect(await ui.find({ type: 'Text', text: 'Name collision · Global and User' })).toBeDefined()
+  expect(await ui.find({ key: 'fix:verify' })).toBeDefined()
+  for (const kind of ['dangling', 'bare', 'unmanaged']) expect(await ui.find({ key: `review:${kind}:User` })).toBeDefined()
+  expect((await ui.findAll({ type: 'Text', text: '1 User skill' })).length).toBe(3)
+  await ui.press({ key: 'chip:User' })
+  // Each flag reads as a warning in the detail view that says what is wrong and what to do.
+  const flags: [string, RegExp][] = [
+    ['/home/u/.claude/skills/mine/SKILL.md', /^No description: .*Add a description: line/],
+    ['/home/u/.claude/skills/mine/SKILL.md', /^Not in your Global folder: .*skillshare collect/],
+    ['/home/u/.claude/skills/gone', /^Broken link: .*Delete the link/],
+  ]
+  for (const [target, flag] of flags) {
+    await ui.press({ key: `open:All:${target}` })
     expect((await ui.find({ type: 'Text', text: flag }))?.props.color).toBe('warning')
+    await ui.press({ key: 'back' })
   }
   expect(reads).not.toContain('/home/u/.claude/skills/gone/SKILL.md')
-  // The link may lead to any file (a repo can point one at ~/.ssh), so the row opens nothing.
-  await ui.press({ key: 'open:User:/home/u/.claude/skills/gone' })
+  // The link may lead to any file (a repo can point one at ~/.ssh), so its detail offers nothing to open.
+  await ui.press({ key: 'open:All:/home/u/.claude/skills/gone' })
+  expect(await ui.find({ key: 'open-file' })).toBeUndefined()
   expect(opened).toEqual([])
   await ui.unmount()
 })
 
-test('lists the skills used most in this repo once there are five uses', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+test('Active here lists the skills used most in this repo once there are five uses', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const disk: Record<string, any> = {
     usage: { since: 1, byName: { verify: { count: 4, lastUsed: 1, byWorkspace: { '/main': 4 } } } },
   }
@@ -254,7 +284,7 @@ test('lists the skills used most in this repo once there are five uses', { optio
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await before.find({ type: 'Text', text: /Most used here/ })).toBeUndefined()
+  expect(await before.find({ type: 'Text', text: 'Active here' })).toBeUndefined()
   await before.unmount()
 
   await $.skill.prompt({ skill: 'verify', text: 'x' })
@@ -262,15 +292,22 @@ test('lists the skills used most in this repo once there are five uses', { optio
   expect(disk.usage.byName.verify.byWorkspace).toEqual({ '/main': 5 })
 
   const after = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await after.find({ type: 'Text', text: /Most used here/ }))?.text).toBe('Most used here (1)')
-  expect(await after.find({ key: 'open:Most used here:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
+  expect(await after.find({ type: 'Text', text: 'Active here' })).toBeDefined()
+  // The worktree's main repository names the section.
+  expect(await after.find({ type: 'Text', text: '/main' })).toBeDefined()
+  expect(await after.find({ key: 'open:Active here:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
   await after.unmount()
 })
 
 test('a collapsed section hides its rows and stays collapsed', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
-  const verify = 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md'
-  const disk: Record<string, any> = {}
-  mock.clock(on)
+  const DAY = 24 * 60 * 60 * 1000
+  const target = '/home/u/.config/skillshare/skills/verify/SKILL.md'
+  const verify = `open:Starred:${target}`
+  const disk: Record<string, any> = {
+    starred: [target],
+    usage: { since: DAY, byName: { verify: { count: 1, lastUsed: 39 * DAY, byWorkspace: { '/x': 1 } } } },
+  }
+  mock.clock(on, { now: 40 * DAY })
   on('store.get', (_, e: any) => ({ value: disk[e.key] }))
   on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
   on('command.register', () => ({ value: { command: 'my-skills' } }))
@@ -286,20 +323,19 @@ test('a collapsed section hides its rows and stays collapsed', { options: { glob
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ key: verify })).toBeDefined()
-  await ui.press({ key: 'collapse:Global' })
+  await ui.press({ key: 'collapse:Starred' })
   const collapsed = {
     row: await ui.find({ key: verify }),
-    folders: await ui.find({ type: 'Text', text: '~/.config/skillshare/skills' }),
-    arrow: (await ui.find({ key: 'collapse:Global' }))?.text,
-    title: (await ui.find({ type: 'Text', text: /Global \(/ }))?.text,
+    arrow: (await ui.find({ key: 'collapse:Starred' }))?.text,
+    title: (await ui.find({ type: 'Text', text: 'Starred' }))?.text,
     saved: disk.collapsed,
   }
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await ui.press({ key: 'refresh' })
   const reloaded = await ui.find({ key: verify })
-  await ui.press({ key: 'collapse:Global' })
+  await ui.press({ key: 'collapse:Starred' })
   expect({ ...collapsed, reloaded, reopened: (await ui.find({ key: verify })) !== undefined, saved2: disk.collapsed }).toEqual({
-    row: undefined, folders: undefined, arrow: '▶\uFE0E', title: 'Global (1)', saved: ['Global'],
+    row: undefined, arrow: '▶\uFE0E', title: 'Starred', saved: ['Starred'],
     reloaded: undefined, reopened: true, saved2: [],
   })
   await ui.unmount()
@@ -323,11 +359,11 @@ test('the sort options sit in a box at the top of the list', async ($, on) => {
   const box = await ui.find({ key: 'sort-options' })
   expect({ position: (await ui.find({ key: 'sort-row' }))?.props.position, border: box?.props.borderStyle,
     label: (await ui.find({ type: 'Text', text: /^Sort/ }))?.text })
-    .toEqual({ position: undefined, border: 'round', label: 'Sort:' })
+    .toEqual({ position: undefined, border: 'round', label: 'Sort' })
   await ui.unmount()
 })
 
-test('one saved sort orders every section', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+test('one saved sort orders every list', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const alpha = '/home/u/.config/skillshare/skills/alpha/SKILL.md'
   const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
   const files: Record<string, string> = { ...FILES, [alpha]: '---\ndescription: Alpha\n---' }
@@ -342,7 +378,8 @@ test('one saved sort orders every section', { options: { globalSkillsDir: '~/.co
       verify: { count: 2, lastUsed: 20, byWorkspace: { '/proj': 2 } },
     } },
   }
-  mock.clock(on)
+  // Both uses are moments old, so both starred skills are listed, not idle.
+  mock.clock(on, { now: 1000 })
   on('store.get', (_, e: any) => ({ value: disk[e.key] }))
   on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
   on('command.register', () => ({ value: { command: 'my-skills' } }))
@@ -359,8 +396,8 @@ test('one saved sort orders every section', { options: { globalSkillsDir: '~/.co
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const orders = async () => {
     const buttons = await ui.findAll({ type: 'Button' })
-    return ['Global', 'Starred', 'Most used here'].map(section =>
-      buttons.filter(one => one.key?.startsWith(`open:${section}:`)).map(one => one.text).reverse())
+    return ['All', 'Starred', 'Active here'].map(list =>
+      buttons.filter(one => one.key?.startsWith(`open:${list}:`)).map(one => one.text))
   }
   const recent = await orders()
   await ui.press({ key: 'sort:count' })
@@ -454,11 +491,15 @@ test('imports history once in the background, skipping subagents and files over 
   expect(reads.some(path => path.includes('subagents'))).toBe(false)
   expect(reads.filter(path => path.endsWith('s1.jsonl')).length).toBe(1)
   expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /4×\s·\s5d\sago/ })).toBeDefined()
-  // An unused skill dims once the merged history reaches back 30 days, not 30 days after install.
-  expect((await ui.find({ key: 'open:Project:/proj/.claude/skills/good/SKILL.md' }))?.props.dimColor).toBe(true)
-  expect((await ui.find({ type: 'Text', text: /^Counts since / }))?.text).toBe(
-    `Counts since ${new Date(10 * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`)
+  expect(await ui.find({ type: 'Text', text: '4×' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '5d' })).toBeDefined()
+  // A skill never used is drawn dim, a used one at full strength.
+  // (With no folder set, Global is ~/.claude/skills, where verify is a link.)
+  expect((await ui.find({ key: 'open:All:/home/u/.claude/skills/verify' }))?.props.dimColor).toBe(false)
+  await ui.press({ key: 'chip:Project' })
+  expect((await ui.find({ key: 'open:All:/proj/.claude/skills/good/SKILL.md' }))?.props.dimColor).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /^Uses since / }))?.text).toBe(
+    `Uses since ${new Date(10 * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`)
   await ui.unmount()
   const history = JSON.stringify(disk.history)
   await $.skill.prompt({ skill: 'verify', text: 'x' })
@@ -542,10 +583,12 @@ test('with no folder set, Global is ~/.claude/skills and nothing there is flagge
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
 
-  expect(await ui.find({ key: 'open:Global:/home/u/.claude/skills/mine/SKILL.md' })).toBeDefined()
-  expect((await ui.find({ type: 'Text', text: /Global \(/ }))?.text).toBe('Global (1)')
-  expect((await ui.find({ type: 'Text', text: /User \(/ }))?.text).toBe('User (1)')
-  expect(await ui.find({ type: 'Text', text: /health/ })).toBeUndefined()
+  expect(await ui.find({ key: 'open:All:/home/u/.claude/skills/mine/SKILL.md' })).toBeDefined()
+  expect((await ui.find({ key: 'chip:Global' }))?.text).toBe('Global 1')
+  expect((await ui.find({ key: 'chip:User' }))?.text).toBe('User 1')
+  expect(await ui.find({ type: 'Text', text: /need attention$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '•' })).toBeUndefined()
+  await ui.press({ key: 'chip:User' })
   expect((await ui.find({ type: 'Text', text: /^~\/\.claude\/commands/ }))?.text).toBe('~/.claude/commands')
   await ui.unmount()
 })
@@ -566,4 +609,147 @@ test('the pane stays closed until /my-skills opens it', async ($, on) => {
   expect(opens).toEqual([])
   await $.command.run({ command: 'my-skills', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   expect(opens).toEqual(['my-skills'])
+})
+
+test('the list walk: health rows, Review picks the chip, search shows matches, the idle fold opens and closes', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+  const files: Record<string, string> = {
+    '/home/u/.config/skillshare/skills/verify/SKILL.md': FILES['/home/u/.config/skillshare/skills/verify/SKILL.md']!,
+    '/home/u/.claude/skills/drafts/SKILL.md': '---\ndescription: Old drafts\n---',
+    '/home/u/.claude/skills/notes/SKILL.md': '---\ndescription: Old notes\n---',
+    '/home/u/.claude/skills/synced/b1/manifest.json': JSON.stringify({ skills: [{ skillId: 'skill_01V', name: 'verify', description: 'Account copy' }] }),
+  }
+  const dirs: Record<string, any[]> = {
+    '/home/u/.config/skillshare/skills': [{ name: 'verify', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+    '/home/u/.claude/skills': [
+      { name: 'drafts', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+      { name: 'notes', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+      { name: 'synced', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+    ],
+    '/home/u/.claude/skills/synced': [{ name: 'b1', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+  }
+  const drafts = '/home/u/.claude/skills/drafts/SKILL.md'
+  const disk: Record<string, any> = { starred: [drafts] }
+  mock.clock(on)
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/home/u' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  // Health card: verify, drafts and notes; one collision row, one grouped User row.
+  expect((await ui.find({ type: 'Text', text: /need attention$/ }))?.text).toBe('3 skills need attention')
+  expect(await ui.find({ type: 'Text', text: 'Name collision · Global and Account' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '2 User skills' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'Not in your Global folder' })).toBeDefined()
+  expect((await ui.find({ key: 'chip:User' }))?.props.dimColor).toBe(true)
+  await ui.press({ key: 'review:unmanaged:User' })
+  expect({ user: (await ui.find({ key: 'chip:User' }))?.props.dimColor, global: (await ui.find({ key: 'chip:Global' }))?.props.dimColor,
+    saved: disk.scope, row: (await ui.find({ key: `open:All:${drafts}` })) !== undefined })
+    .toEqual({ user: false, global: true, saved: 'User', row: true })
+
+  // Search: the results replace the sections below the field, each row with its source.
+  await ui.press({ key: 'search' })
+  await ui.input({ key: 'query', text: 'notes', kind: 'change' })
+  expect(await ui.find({ type: 'Text', text: '1 match across all sources · by recent' })).toBeDefined()
+  expect(await ui.find({ key: 'open:Search:/home/u/.claude/skills/notes/SKILL.md' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /need attention$/ })).toBeUndefined()
+  await ui.input({ key: 'query', text: 'account', kind: 'change' })
+  expect(await ui.find({ type: 'Text', text: '1 match across all sources · by recent' })).toBeDefined()
+  await ui.input({ key: 'query', text: 'zzz', kind: 'change' })
+  expect(await ui.find({ type: 'Text', text: 'No skills match "zzz"' })).toBeDefined()
+  await ui.press({ key: 'clear-search' })
+  expect(await ui.find({ type: 'Text', text: /need attention$/ })).toBeDefined()
+
+  // Starred: drafts was never used, so it folds into the idle row until shown.
+  expect(await ui.find({ key: `open:Starred:${drafts}` })).toBeUndefined()
+  expect((await ui.find({ key: 'idle' }))?.text).toBe('1 idle · no use in 30+ days · Show')
+  await ui.press({ key: 'idle' })
+  expect(await ui.find({ key: `open:Starred:${drafts}` })).toBeDefined()
+  expect((await ui.find({ key: 'idle' }))?.text).toBe('1 idle · no use in 30+ days · Hide')
+  await ui.press({ key: 'idle' })
+  expect(await ui.find({ key: `open:Starred:${drafts}` })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a collision is fixed only after a pick and a confirm, through skillshare or the Trash, never rm', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+  const shared = '/home/u/.config/skillshare/skills'
+  const files: Record<string, string> = {
+    [`${shared}/verify/SKILL.md`]: FILES[`${shared}/verify/SKILL.md`]!,
+    [`${shared}/agents/SKILL.md`]: '---\ndescription: A name skillshare reserves\n---',
+    '/home/u/.claude/skills/synced/b1/manifest.json': JSON.stringify({ skills: [
+      { skillId: 'skill_01V', name: 'verify', description: 'Account copy' },
+      { skillId: 'skill_02A', name: 'agents', description: 'Account copy' },
+    ] }),
+  }
+  const dirs: Record<string, any[]> = {
+    [shared]: [
+      { name: 'verify', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+      { name: 'agents', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+    ],
+    '/home/u/.claude/skills': [{ name: 'synced', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+    '/home/u/.claude/skills/synced': [{ name: 'b1', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+  }
+  const ran: { argv: string[]; cwd?: string }[] = []
+  const toasts: string[] = []
+  mock.clock(on)
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.toast', (_, e: any) => { toasts.push(e.text); return { value: undefined } })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/home/u' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+  on('process.run', (_, e: any) => {
+    ran.push({ argv: [...e.argv], cwd: e.init?.cwd })
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const removes = async () => (await ui.findAll({ type: 'Button' })).filter(one => one.key?.startsWith('remove:')).map(one => one.text)
+  const global = `${shared}/verify/SKILL.md`
+  const account = 'claude://claude.ai/customize/skills/yours/id/skill_01V'
+
+  await ui.press({ key: 'fix:verify' })
+  expect(await ui.find({ type: 'Text', text: 'Two skills answer to /verify' })).toBeDefined()
+  // Nothing is picked at first, so there is nothing to remove.
+  expect(await removes()).toEqual([])
+  // Keeping Global leaves the Account copy, which only claude.ai can remove.
+  await ui.press({ key: `keep:${global}` })
+  expect({ keep: (await ui.find({ key: `keep:${global}` }))?.text, removes: await removes(),
+    customize: (await ui.find({ key: `customize:${account}` }))?.text })
+    .toEqual({ keep: 'Keep Global', removes: [], customize: 'Open Customize › Skills' })
+  await ui.press({ key: `keep:${account}` })
+  expect(await removes()).toEqual(['Remove Global copy'])
+  await ui.press({ key: `remove:${global}` })
+  expect(ran).toEqual([])
+  expect(await ui.find({ type: 'Text', text: 'Move the Global copy to trash?' })).toBeDefined()
+  await ui.press({ key: 'confirm-remove' })
+  expect(ran).toEqual([{ argv: ['skillshare', 'uninstall', 'verify', '-g', '--force'], cwd: '/home/u' }])
+  expect(toasts).toEqual(['Removed. Commit in ~/.config/skillshare and run skillshare sync.'])
+  // The detail view stays open after the fix.
+  expect(await ui.find({ key: 'back' })).toBeDefined()
+
+  // A name skillshare would read as a keyword goes to the Trash instead: the skill's folder, under a dated name.
+  await ui.press({ key: 'back' })
+  await ui.press({ key: 'fix:agents' })
+  await ui.press({ key: 'keep:claude://claude.ai/customize/skills/yours/id/skill_02A' })
+  await ui.press({ key: `remove:${shared}/agents/SKILL.md` })
+  await ui.press({ key: 'confirm-remove' })
+  expect(ran[1]?.argv.slice(0, 2)).toEqual(['mv', `${shared}/agents`])
+  expect(ran[1]?.argv[2]).toMatch(/^\/home\/u\/\.Trash\/agents \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d$/)
+  expect(toasts.at(-1)).toBe('Moved to Trash.')
+  expect(ran.some(one => one.argv[0] === 'rm')).toBe(false)
+  await ui.unmount()
 })

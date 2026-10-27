@@ -20,13 +20,13 @@ Run `/my-skills` again any time to reopen the pane and rescan.
 
 ## What it does
 
-- **Lists your skills by where they live:** Global, User, Project and Account, each with its own section.
-- **Counts use:** every row shows how many times you've used it and when you last did (`12× · 3d ago`). Your past sessions are imported on first run, so the counts start with your history.
-- **Dims what you don't use:** anything untouched for 30 days is greyed out.
-- **Flags problems:** a `!` marks a skill with no description, a broken link, or a name that appears in two places. The hover card says what's wrong and how to fix it.
-- **Shows what you use in this repo:** a **Most used here** section lists your top five skills in the current project.
-- **Stars, sorting and collapsing:** star the ones you reach for, sort by Recent, Most used or Name, and fold away sections you don't need.
-- **Opens the source:** click a name to open its `SKILL.md` or command file in your editor.
+- **Lists every skill once:** pick a source with the chips (Global, User, Account, Project) and the list shows that source's skills, twelve at a time.
+- **Counts use:** every row shows how many times you've used it, when you last did, and a small 30-day trend line. Your past sessions are imported on first run, so the counts start with your history.
+- **Puts problems at the top:** a health card lists what needs attention, with a button that opens the fix or filters the list to the skills it means.
+- **Fixes a name collision for you:** when two copies answer to the same `/name`, the skill's detail view lets you pick the copy to keep and move the other to the Trash.
+- **Searches:** find a skill by name, source or description across every source at once.
+- **Shows what you use in this repo:** an **Active here** section lists your top five skills in the current project.
+- **Stars and sorting:** star the ones you reach for, and sort every list by Recent, Most used or Name.
 
 ## Why I built it
 
@@ -38,26 +38,61 @@ Once the list was always in view, two more problems showed up. I couldn't tell w
 
 ## How it works
 
-### Sections
+### The list
 
-| Section | What it reads |
+From the top, the pane shows:
+
+1. **Header.** "Skills" and how many there are, then Search, Refresh and Close.
+2. **Search.** Press Search to open the field (the mobile app has no text field yet, so it's hidden there). While it holds text, everything below it gives way to the matches from every source, each with its source under it, and a line such as "3 matches across all sources · by recent". Clear empties it; pressing Search again closes it.
+3. **Health card.** Shown only when something is wrong, titled with how many skills need attention. A name collision gets a row of its own with a **Fix** button that opens that skill's detail view. Every other problem is grouped by kind and source, such as "9 User skills · Not in your Global folder", with a **Review** button that switches the All skills list to that source.
+4. **Sort.** Recent, Most used or Name. It orders every list in the pane, search results included. Recent breaks ties by uses, Most used by name.
+5. **Active here.** Appears once you've used skills five times in the current project and lists the five you use most there. The header names the project folder. Uses in a git worktree count toward its main repo, so every worktree of a project shares one list.
+6. **Starred.** The skills you've starred and used in the last 30 days. Starred skills you haven't touched in 30 days or more fold into one line, "4 idle · no use in 30+ days", which shows or hides them.
+7. **All skills.** One chip per source with its count; an amber dot beside a chip means that source has a skill needing attention. Under the chips is the folder the source reads from. The list shows the first twelve skills and a "Show all" button for the rest.
+
+Click the ▼ beside Active here or Starred to collapse it, and the ▶ to open it again. Stars, collapsed sections, the sort and the chosen source are saved across sessions.
+
+### Sources
+
+| Source | What it reads |
 |---|---|
 | **Global** | `~/.claude/skills` by default: the personal skills Claude Code loads in every project. Point it at a shared folder instead if you keep one (see [Using skillshare](#using-skillshare)). |
 | **User** | `~/.claude/commands`. When Global points at another folder, User also lists the skills in `~/.claude/skills` that aren't already under Global. |
-| **Project** | `.claude/skills` and `.claude/commands` in the session's project root. Links that point outside the project are left out. |
 | **Account** | Skills uploaded to your claude.ai account, read from the copy Claude Code syncs to `~/.claude/skills/synced`. |
+| **Project** | `.claude/skills` and `.claude/commands` in the session's project root. Links that point outside the project are left out. |
 
-Two more sections sit above those. **Starred** holds the skills you've starred: hover a row, click the ☆ after the name, and click ★ to unstar. **Most used here** appears once you've used skills five times in the current project and lists the five you use most there. Uses in a git worktree count toward its main repo, so every worktree of a project shares one list. Hovering a skill in either section also shows where it lives (`Global · ~/.claude/skills/verify/SKILL.md`).
+### Rows
 
-Click the ▼ beside a section's title to collapse it to that one line, and the ▶ to open it again. Stars, collapsed sections and your sort choice are all saved across sessions.
+Every list uses the same row: a star, the name, a `!` when the skill needs attention, a 30-day trend line, the use count (`12×`, or `—` if never used) and how long ago you last used it (`4h`, `3d`, `never`). A name you've never used is drawn dim. The trend line sums the last 30 days in ten three-day steps and reads as rising, steady or fading; in the terminal it's drawn with block characters.
 
-### Hover and click
+Click the star to star or unstar a skill. Click the name to open its detail view.
 
-Hover a name to see its description in a floating card. Click it to open the file in your default editor. An Account skill opens its page in Customize › Skills in the Claude desktop app instead.
+### Detail view
+
+The detail view replaces the list in the same pane; "‹ Skills" goes back. It shows:
+
+- The name, a star, the `/name` you type, and every source that has a skill by that name.
+- Uses, when you last used it, and its rank among your skills by uses.
+- A chart of the last 30 days, day by day, with the trend word.
+- Any problem with the skill, and what to do about it.
+- The full description.
+- Actions: **Open SKILL.md** (or the command's file; an Account skill opens its page in Customize › Skills in the Claude desktop app), **Copy /name**, and **Reveal in Finder**. A broken link offers nothing to open.
+
+### Fixing a name collision
+
+When two copies answer to the same `/name`, Claude may load either one. The detail view lists each copy with its path and asks which to keep. Nothing is picked at first and nothing can be removed until you pick. Then a "Remove Global copy" button (or whichever source the other copy is in) asks once more, "Move the Global copy to trash?", and only Confirm does it.
+
+How the other copy goes depends on where it lives:
+
+- **Global, when Global is a skillshare folder.** The mod runs `skillshare uninstall <name> -g --force`, which moves the skill into skillshare's own trash. Commit the change in `~/.config/skillshare` and run `skillshare sync` afterwards so your other agents drop it too. A name skillshare could read as anything other than a plain skill name goes to the Trash instead.
+- **Everything else** (Global at `~/.claude/skills`, User, Project). The skill's folder, or the command's file, moves to `~/.Trash` with the date and time added to its name, so nothing there is overwritten and you can put it back from the Finder.
+- **Account.** The mod can't remove it. The button opens the skill's page in Customize › Skills instead.
+
+If the move fails, the pane shows the error and changes nothing. There is no rename yet.
 
 ### Use counts
 
-The mod counts a use each time Claude Code loads a skill or command, whether you typed `/name` or Claude called it, and keeps the count and the last-used date per name. Rows show both. The **Sort** box at the top orders every section by Recent, Most used or Name.
+The mod counts a use each time Claude Code loads a skill or command, whether you typed `/name` or Claude called it, and keeps the count, the last-used date, the uses per day for the last 30 days, and the uses per project.
 
 Counts would be empty for weeks if they started at install, so on its first run the mod reads your past sessions under `~/.claude/projects` once, in the background, and counts the skills and commands they used. The pane says "Importing history…" while it works. Only names the pane lists are counted, so built-in commands and other plugins' skills drop out. Subagent transcripts are skipped. Transcripts over 4 MB are read with `grep` where your system has it (macOS and Linux do) and skipped where it doesn't. The note at the bottom of the pane says how far back the counts go.
 
@@ -65,18 +100,16 @@ From then on, every load counts, including skills a subagent preloads. Treat the
 
 ### Health flags
 
-A `!` after a name means one of these, and the hover card leads with the fix:
+A `!` after a name means one of these:
 
 - **No description.** Claude can't tell when to use the skill. Add a `description:` line to the top of its file.
 - **Broken link.** The entry points at something that isn't a skill folder. Delete the link or repoint it.
-- **Same name in two sections.** Both answer to `/name`, so the wrong one may load. Rename or remove one.
+- **Name collision.** Two sources have a skill by the same name, so the wrong one may load. Fix it from the skill's detail view.
 - **Not in your Global folder.** Only when Global points at a shared folder that has skills in it: a skill in `~/.claude/skills` that didn't come from it, so your other agents don't get it. See [Using skillshare](#using-skillshare).
-
-A section with flagged rows shows the count beside its title (`2 health`), and the count stays visible when the section is collapsed.
 
 ### What it touches
 
-Everything stays on your machine. The mod reads your skill folders and session transcripts and keeps its counts, stars and settings in Claude Code's plugin store. It makes no network calls. Watching skill loads never changes them: if the counter fails, the skill runs exactly as it would have.
+Everything stays on your machine. The mod reads your skill folders and session transcripts and keeps its counts, stars and settings in Claude Code's plugin store. It makes no network calls. It changes your skill folders only when you confirm a collision fix, and then only the one copy you chose to remove. Watching skill loads never changes them: if the counter fails, the skill runs exactly as it would have.
 
 ## Using skillshare
 
