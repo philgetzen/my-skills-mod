@@ -19,7 +19,7 @@ On first run, for every user (Phil included, whose store has no import marker), 
 ## Constraints
 
 - Never blocks the session or the pane; a failure leaves live counting untouched and is retried next session at most once more.
-- Reads files only through the mod's own `$.fs` (no shell tools), so it works off macOS. Large transcripts are read in a bounded way.
+- Reads transcripts through the mod's own `$.fs`; files over its 4 MiB read cap go through `grep` where it exists and are skipped where it does not (Phil, 2026-10-26).
 - No double counting: a typed `/name` that expands a skill is one use, not two; subagent transcripts are skipped.
 - One failing test for the parser and merge on a small fake projects folder; no new harness.
 
@@ -35,7 +35,7 @@ On first run, for every user (Phil included, whose store has no import marker), 
 - Importing from `~/.claude/history.jsonl` (prompt history without session folders).
 - Per-day history or charts.
 
-Budget: 3 agent-hours (Phil, 2026-10-26).
+Budget: 3.5 agent-hours (Phil, 2026-10-26; raised from 3 h to read transcripts over 4 MiB with grep).
 - research and plan: 0.5 h
-- scanner and merge, test-first: 1.5 h
+- scanner and merge, test-first, grep for large files: 2 h
 - pane status line, wiring, review: 1 h
