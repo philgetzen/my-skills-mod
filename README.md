@@ -11,13 +11,17 @@ A **Starred** section sits at the top: hover a row and click the ☆ after the n
 
 Hover a name to see what the skill does. Click it to open its `SKILL.md` (or command file) in your default editor, or, for an Account skill, its page in Customize › Skills in the Claude desktop app.
 
-Each row shows how often you have used the skill and when you last did (`12× · 3d ago`). A skill you have not used in 30 days is dimmed. Counts start when you install the mod and include every time a skill is loaded, subagent preloads included, so treat them as a guide rather than an exact tally.
+Each row shows how often you have used the skill and when you last did (`12× · 3d ago`). A skill you have not used in 30 days is dimmed. The **Sort** row at the top orders every section by Recent, Most used or Name, and remembers your choice.
+
+The first time it runs, the mod reads your past sessions under `~/.claude/projects` once, in the background, and counts the skills and commands it lists there, so the counts start with your history rather than at install. The pane says "Importing history…" while it works. Subagent transcripts are skipped, and transcripts over 4 MB are read with `grep` where your system has it (macOS and Linux do) and skipped where it does not. From then on every time a skill is loaded counts, subagent preloads included, so treat the numbers as a guide rather than an exact tally. The note at the bottom of the pane says how far back they go.
 
 A `!` after a name flags a problem, with the reason in the hover card: the skill has no description, its link points nowhere, the same name appears in two sections, or it sits in `~/.claude/skills` without coming from your Global folder. A section with flagged rows says how many beside its title (`2 health`).
 
-Once you have used skills five times in a project, a **Suggested for this repo** section lists the ones you use most there.
+Once you have used skills five times in a project, a **Suggested for this repo** section lists the ones you use most there. Uses in a git worktree count toward its main repo.
 
-Run `/my-skills` to reopen the pane and rescan. The pane also has a Refresh button.
+Hovering a Starred or Suggested skill also shows where it lives (`Global · ~/.config/skillshare/skills/verify/SKILL.md`).
+
+Run `/my-skills` to reopen the pane and rescan. The pane also has a Refresh button beside the sort.
 
 ## Install
 

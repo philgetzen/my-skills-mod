@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Item, Section, Usage } from '../types'
+import type { History, Item, Section, Sort, Usage, Use } from '../types'
 
 const PANE = 'my-skills'
 const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
@@ -11,6 +11,15 @@ const starred = atom({ plugin: 'my-skills', key: 'starred' } as const, [])
 const STARRED_KEY = 'starred'
 const usage = atom({ plugin: 'my-skills', key: 'usage' } as const, { byName: {} })
 const USAGE_KEY = 'usage'
+const history = atom({ plugin: 'my-skills', key: 'history' } as const, { byName: {}, attempts: 0 })
+const HISTORY_KEY = 'history'
+const importing = atom({ plugin: 'my-skills', key: 'importing' } as const, false)
+const READ_CAP = 4 * 1024 * 1024
+const IMPORT_DELAY = 2000
+const BOUNDARY = 5 * 60 * 1000
+const WORKTREE = /\/\.claude\/worktrees\/[^/]+(\/.*)?$/
+const sort = atom({ plugin: 'my-skills', key: 'sort' } as const, 'recent')
+const SORT_KEY = 'sort'
 // Each flag says what is wrong and what to do about it, shown first in the hover card.
 const DANGLING = "Broken link: this entry points to something that isn't a skill folder. Delete the link, or point it at the skill's folder."
 const BARE = "No description: Claude can't tell when to use it. Add a description: line to the top of its file."
@@ -223,6 +232,10 @@ async function refresh($: EngineInterface, globalSetting: string) {
   await update($, sections, () => next)
   await loadStars($)
   await loadUsage($)
+  const imported = await savedHistory($)
+  await update($, history, () => imported)
+  const order = await $.store.get(SORT_KEY)
+  await update($, sort, () => order === 'count' || order === 'name' ? order : 'recent')
 }
 
 async function savedStars($: EngineInterface): Promise<string[]> {
@@ -256,11 +269,135 @@ async function loadUsage($: EngineInterface) {
   await update($, usage, () => saved)
 }
 
+async function savedHistory($: EngineInterface): Promise<History> {
+  const saved = await $.store.get(HISTORY_KEY)
+  if (typeof saved !== 'object' || saved === null || Array.isArray(saved)) return { byName: {}, attempts: 0 }
+  const value = saved as Record<string, unknown>
+  return {
+    byName: typeof value.byName === 'object' && value.byName !== null && !Array.isArray(value.byName)
+      ? value.byName as Record<string, Use> : {},
+    attempts: typeof value.attempts === 'number' && Number.isFinite(value.attempts) && value.attempts >= 0 ? value.attempts : 0,
+    ...(typeof value.oldest === 'number' && Number.isFinite(value.oldest) ? { oldest: value.oldest } : {}),
+    ...(typeof value.importedAt === 'number' && Number.isFinite(value.importedAt) ? { importedAt: value.importedAt } : {}),
+  }
+}
+
+async function importHistory($: EngineInterface) {
+  const fail = async (error: unknown) => {
+    try {
+      const saved = await savedHistory($)
+      if (saved.importedAt === undefined) await $.store.set(HISTORY_KEY, { ...saved, attempts: saved.attempts + 1 })
+    } catch {}
+    try { await update($, importing, () => false) } catch {}
+    try { $.ui.log(`my-skills: history import failed: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }) } catch {}
+  }
+  try {
+    const startedAt = await $.clock.now()
+    const home = (await $.env.get('HOME')) ?? ''
+    const projects = `${home}/.claude/projects`
+    const listed = new Set((await read($, sections)).flatMap(section => section.items.map(item => item.name.replace(/^\//, ''))))
+    const cutoff = ((await savedUsage($)).since ?? startedAt) - BOUNDARY
+    const found: Record<string, Use> = {}
+    const keys = new Map<string, string>()
+    let files = 0, grepped = 0, skipped = 0, uses = 0, oldest = Infinity
+    const finish = async () => {
+      const now = await $.clock.now()
+      const saved = await savedHistory($)
+      if (saved.importedAt === undefined) {
+        const next: History = { byName: found, importedAt: now, attempts: saved.attempts,
+          ...(oldest === Infinity ? {} : { oldest }) }
+        await $.store.set(HISTORY_KEY, next)
+        await update($, history, () => next)
+      } else {
+        await update($, history, () => saved)
+      }
+      await update($, importing, () => false)
+      $.ui.log(`my-skills: imported ${uses} uses from ${files} transcripts, ${grepped} over 4 MiB read with grep, ${skipped} skipped, ${now - startedAt} ms`, { to: 'debug' })
+    }
+    const scanFolder = async (folder: string) => {
+      for (const entry of await $.fs.list(`${projects}/${folder}`)) {
+        if (entry.kind !== 'file' || !entry.name.endsWith('.jsonl')) continue
+        const path = `${projects}/${folder}/${entry.name}`
+        let text: string
+        try {
+          if (entry.size > READ_CAP) {
+            const result = await $.process.run(['grep', '-h', '-F', '-e', '"name":"Skill"', '-e', '<command-name>', path], { timeoutMs: 60000 })
+            if (result.isStdoutTruncated || (result.exitCode !== 0 && result.exitCode !== 1)) { skipped++; continue }
+            grepped++
+            text = result.exitCode === 1 ? '' : result.stdout
+          } else {
+            text = await $.fs.read(path)
+            files++
+          }
+        } catch { skipped++; continue }
+        for (const line of text.split('\n')) {
+          if (!line.includes('"name":"Skill"') && !line.includes('<command-name>')) continue
+          let row
+          try { row = JSON.parse(line) } catch { continue }
+          if (row === null || typeof row !== 'object') continue
+          const at = Date.parse(row.timestamp)
+          if (!(at < cutoff) || typeof row.cwd !== 'string') continue
+          const names: string[] = []
+          if (row.type === 'assistant' && Array.isArray(row.message?.content)) {
+            for (const block of row.message.content) {
+              if (block?.type === 'tool_use' && block.name === 'Skill' && typeof block.input?.skill === 'string') names.push(block.input.skill)
+            }
+          } else if (row.type === 'user') {
+            const content = row.message?.content
+            const text = typeof content === 'string' ? content : Array.isArray(content) ? content[0]?.text : undefined
+            const match = typeof text === 'string' ? text.match(/<command-name>\/?([^<]+)<\/command-name>/) : undefined
+            if (match?.[1]) names.push(match[1])
+          }
+          for (const raw of names) {
+            const name = raw.replace(/^\//, '')
+            if (!listed.has(name)) continue
+            const key = keys.get(row.cwd) ?? await mainRepo($, row.cwd)
+            keys.set(row.cwd, key)
+            const previous = Object.hasOwn(found, name) ? found[name] : undefined
+            found[name] = {
+              count: (previous?.count ?? 0) + 1,
+              lastUsed: Math.max(previous?.lastUsed ?? -Infinity, at),
+              byWorkspace: { ...previous?.byWorkspace,
+                [key]: ((previous && Object.hasOwn(previous.byWorkspace, key) ? previous.byWorkspace[key] : 0) ?? 0) + 1 },
+            }
+            uses++
+            oldest = Math.min(oldest, at)
+          }
+        }
+      }
+    }
+    const folders = await $.fs.exists(projects) ? (await $.fs.list(projects)).filter(one => one.kind === 'dir') : []
+    const step = (i: number) => {
+      $.clock.after(0, () => void (async () => {
+        try {
+          await scanFolder(folders[i]!.name)
+          if (i + 1 < folders.length) step(i + 1)
+          else await finish()
+        } catch (error) { await fail(error) }
+      })())
+    }
+    if (folders.length === 0) await finish()
+    else step(0)
+  } catch (error) { await fail(error) }
+}
+
+async function mainRepo($: EngineInterface, root: string): Promise<string> {
+  try {
+    const git = `${root}/.git`
+    if (!(await $.fs.exists(git))) return root.replace(WORKTREE, '')
+    if ((await $.fs.stat(git)).kind !== 'file') return root
+    const match = (await $.fs.read(git)).match(/^gitdir: (\/[^\r\n]*?)\/\.git\/worktrees\/[^/\r\n]+\r?\n?$/)
+    return match?.[1] ?? root
+  } catch {
+    return root
+  }
+}
+
 async function record($: EngineInterface, skill: string) {
   const list = await read($, sections)
   if (!list.some(section => section.items.some(item => item.name.replace(/^\//, '') === skill))) return
   const now = await $.clock.now()
-  const root = await $.session.root()
+  const root = await mainRepo($, await $.session.root())
   const saved = await savedUsage($)
   const previous = Object.hasOwn(saved.byName, skill) ? saved.byName[skill] : undefined
   const next: Usage = {
@@ -290,7 +427,13 @@ async function setStar($: EngineInterface, target: string, isStarred: boolean) {
   await update($, starred, () => next)
 }
 
+async function setSort($: EngineInterface, order: Sort) {
+  if (await $.store.get(SORT_KEY) !== order) await $.store.set(SORT_KEY, order)
+  await update($, sort, () => order)
+}
+
 export const register: Register = (on, options) => {
+  let importScheduled = false
   const globalDir = String(options.globalSkillsDir ?? '~/.config/skillshare/skills')
 
   on('skill.prompt', async ($, e, next) => {
@@ -305,6 +448,16 @@ export const register: Register = (on, options) => {
       description: 'Show your skills and commands: starred, global, user, project, account',
     })
     await refresh($, globalDir)
+    // `importing` is shared state and outlives a reload, which cancels this load's
+    // timers; whether an import is scheduled is this load's own business.
+    const saved = await read($, history)
+    if (saved.importedAt === undefined && saved.attempts < 2 && !importScheduled) {
+      importScheduled = true
+      await update($, importing, () => true)
+      $.clock.after(IMPORT_DELAY, () => void importHistory($))
+    } else if (!importScheduled) {
+      await update($, importing, () => false)
+    }
     void $.ui.open({ id: PANE, title: 'My skills' })
 
     return next(e)
@@ -328,16 +481,30 @@ export const register: Register = (on, options) => {
     const list = await read($, sections)
     const stars = new Set(await read($, starred))
     const saved = await read($, usage)
+    const imported = await read($, history)
+    const busy = await read($, importing)
+    const since = Math.min(saved.since ?? Infinity, imported.oldest ?? Infinity)
+    const order = await read($, sort)
+    const home = (await $.env.get('HOME')) ?? ''
     const now = await $.clock.now()
     const useOf = (item: Item) => {
       const name = item.name.replace(/^\//, '')
-      return Object.hasOwn(saved.byName, name) ? saved.byName[name] : undefined
+      const live = Object.hasOwn(saved.byName, name) ? saved.byName[name] : undefined
+      const past = Object.hasOwn(imported.byName, name) ? imported.byName[name] : undefined
+      if (!live) return past
+      if (!past) return live
+      const byWorkspace = { ...live.byWorkspace }
+      for (const [key, count] of Object.entries(past.byWorkspace)) byWorkspace[key] = (Object.hasOwn(byWorkspace, key) ? byWorkspace[key]! : 0) + count
+      return { count: live.count + past.count, lastUsed: Math.max(live.lastUsed, past.lastUsed), byWorkspace }
+    }
+    const compare = (a: Item, b: Item) => {
+      const metric = order === 'recent' ? 'lastUsed' : 'count'
+      return (order === 'name' ? 0 : (useOf(b)?.[metric] ?? -Infinity) - (useOf(a)?.[metric] ?? -Infinity)) || a.name.localeCompare(b.name)
     }
     const starredItems = list
       .flatMap(section => section.items)
       .filter(item => stars.has(item.target))
-      .sort((a, b) => (useOf(b)?.lastUsed ?? -Infinity) - (useOf(a)?.lastUsed ?? -Infinity) || a.name.localeCompare(b.name))
-    const root = await $.session.root()
+    const root = await mainRepo($, await $.session.root())
     const inRepo = list
       .flatMap(section => section.items)
       .filter(item => (useOf(item)?.byWorkspace[root] ?? 0) > 0)
@@ -353,15 +520,31 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column-reverse">
         <Box height={16} />
+        {/* One footer line, a blank line below the last section. While the import
+            runs its date would be wrong, so it says what is happening instead. */}
+        <Box marginTop={1}>
+          <Text dimColor>
+            {busy
+              ? 'Importing history…'
+              : since === Infinity
+                ? 'No uses counted yet'
+                : `Counts since ${new Date(since).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`}
+          </Text>
+        </Box>
         {[...shown].reverse().map(section => (
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
-            {[...section.items].reverse().map(item => {
+            {[...section.items].sort(compare).reverse().map(item => {
+              const origin = section.title === 'Starred' || section.title === 'Suggested for this repo'
+                ? list.find(source => source.items.includes(item))?.title : undefined
+              const path = home && item.target.startsWith(`${home}/`) ? `~${item.target.slice(home.length)}` : item.target
               const use = useOf(item)
               const age = use ? now - use.lastUsed : 0
               const ago = age < HOUR ? 'just now' : age < DAY ? `${Math.floor(age / HOUR)}h ago` : `${Math.floor(age / DAY)}d ago`
-              const stale = use ? age >= 30 * DAY : saved.since !== undefined && now - saved.since >= 30 * DAY
+              const stale = use ? age >= 30 * DAY : Number.isFinite(since) && now - since >= 30 * DAY
               return (
-                <Box key={`${section.title}:${item.target}`}>
+                // In a narrow pane the count moves under the name as a unit instead of
+                // breaking across lines.
+                <Box key={`${section.title}:${item.target}`} flexWrap="wrap">
                   <Button
                     key={`open:${section.title}:${item.target}`}
                     plain
@@ -390,8 +573,14 @@ export const register: Register = (on, options) => {
                       {stars.has(item.target) ? '★' : '☆'}
                     </Button>
                   </Box>
-                  {item.health && <Text color="warning">!</Text>}
-                  {use && <Text dimColor>{use.count}× · {ago}</Text>}
+                  {(item.health || use) && (
+                    <Box columnGap={1} marginLeft={1} flexShrink={0}>
+                      {item.health && <Text color="warning">!</Text>}
+                      {/* Non-breaking spaces keep "4× · 34d ago" one word, so the row
+                          moves it whole instead of breaking it across lines. */}
+                      {use && <Text dimColor wrap="truncate-end">{`${use.count}×\u00a0·\u00a0${ago.replace(/ /g, '\u00a0')}`}</Text>}
+                    </Box>
+                  )}
                   <Box
                     position="absolute"
                     top={1}
@@ -408,13 +597,14 @@ export const register: Register = (on, options) => {
                   >
                     {(item.health ?? []).map(flag => <Text color="warning">{flag}</Text>)}
                     {(item.description || !item.health) && <Text>{item.description || 'No description.'}</Text>}
+                    {origin && <Text dimColor>{origin === 'Account' ? origin : `${origin} · ${path}`}</Text>}
                   </Box>
                 </Box>
               )
             })}
             {section.items.length === 0 && <Text dimColor>none</Text>}
             <Text dimColor>{section.folders.join(', ')}</Text>
-            <Box>
+            <Box columnGap={1}>
               <Text bold>{section.title} ({section.items.length})</Text>
               {section.items.filter(item => item.health?.length).length > 0 && (
                 <Text color="warning">{section.items.filter(item => item.health?.length).length} health</Text>
@@ -422,10 +612,26 @@ export const register: Register = (on, options) => {
             </Box>
           </Box>
         ))}
-        <Text dimColor>
-          {saved.since === undefined ? 'No uses recorded yet' : `Since ${new Date(saved.since).toLocaleDateString()} · counts every expansion, subagent preloads included`}
-        </Text>
-        <Button key="refresh" onPress={() => refresh($, globalDir)}>Refresh</Button>
+        {/* One header row: the sort on the left, the selected option at full
+            strength and the others dim, and a quiet Refresh on the right. */}
+        <Box justifyContent="space-between">
+          <Box columnGap={1}>
+            <Text dimColor>Sort</Text>
+            {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
+              <Button
+                key={`sort:${value}`}
+                plain
+                dimColor={order !== value}
+                onPress={() => setSort($, value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </Box>
+          <Button key="refresh" plain dimColor onPress={() => refresh($, globalDir)}>
+            Refresh
+          </Button>
+        </Box>
       </Box>
     )
   })

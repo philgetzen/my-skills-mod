@@ -96,6 +96,7 @@ test('stars move a skill into Starred and survive a new session', async ($, on) 
     await ui.press({ key: 'star:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' })
     expect(await count(ui)).toBe('Starred (1)')
     expect(await ui.find({ key: 'open:Starred:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: 'Global · ~/.config/skillshare/skills/verify/SKILL.md' }))?.props.dimColor).toBe(true)
     await ui.unmount()
 
     // A new session reloads stars from the store; without the store write it would show 0.
@@ -179,9 +180,9 @@ test('counts a use, shows it on the row, and leaves the prompt untouched', async
   expect(disk.usage.byName.bad).toBeUndefined()
   expect(disk.usage.since).toBe(40 * DAY)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: /2× · 3d ago/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /2×\s·\s3d\sago/ })).toBeDefined()
   expect((await ui.find({ key: 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md' }))?.props.dimColor).toBeFalsy()
-  expect((await ui.find({ type: 'Text', text: /Since / }))?.text).toContain('preloads included')
+  expect((await ui.find({ type: 'Text', text: /^Counts since / }))?.text).toContain('preloads included')
   await ui.unmount()
 })
 
@@ -233,7 +234,7 @@ test('health flags a dangling link, a bare skill and a name collision, without r
 
 test('suggests the skills used most in this repo once there are five uses', async ($, on) => {
   const disk: Record<string, any> = {
-    usage: { since: 1, byName: { verify: { count: 4, lastUsed: 1, byWorkspace: { '/proj': 4 } } } },
+    usage: { since: 1, byName: { verify: { count: 4, lastUsed: 1, byWorkspace: { '/main': 4 } } } },
   }
   mock.clock(on)
   on('store.get', (_, e: any) => ({ value: disk[e.key] }))
@@ -244,10 +245,10 @@ test('suggests the skills used most in this repo once there are five uses', asyn
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('env.get', () => ({ value: '/home/u' }))
   on('session.root', () => ({ value: '/proj' }))
-  on('fs.exists', (_, e: any) => ({ value: e.path in FILES || e.path in DIRS }))
+  on('fs.exists', (_, e: any) => ({ value: e.path === '/proj/.git' || e.path in FILES || e.path in DIRS }))
   on('fs.list', (_, e: any) => ({ value: DIRS[e.path] ?? [] }))
   on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
-  on('fs.read', (_, e: any) => (e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
+  on('fs.read', (_, e: any) => (e.path === '/proj/.git' ? { value: 'gitdir: /main/.git/worktrees/topic\n' } : e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
@@ -256,8 +257,152 @@ test('suggests the skills used most in this repo once there are five uses', asyn
 
   await $.skill.prompt({ skill: 'verify', text: 'x' })
 
+  expect(disk.usage.byName.verify.byWorkspace).toEqual({ '/main': 5 })
+
   const after = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect((await after.find({ type: 'Text', text: /Suggested for this repo/ }))?.text).toBe('Suggested for this repo (1)')
   expect(await after.find({ key: 'open:Suggested for this repo:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
   await after.unmount()
+})
+
+test('one saved sort orders every section', async ($, on) => {
+  const alpha = '/home/u/.config/skillshare/skills/alpha/SKILL.md'
+  const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
+  const files: Record<string, string> = { ...FILES, [alpha]: '---\ndescription: Alpha\n---' }
+  const dirs = { ...DIRS, '/home/u/.config/skillshare/skills': [
+    ...DIRS['/home/u/.config/skillshare/skills']!,
+    { name: 'alpha', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+  ] }
+  const disk: Record<string, any> = {
+    starred: [alpha, verify],
+    usage: { since: 1, byName: {
+      alpha: { count: 9, lastUsed: 10, byWorkspace: { '/proj': 9 } },
+      verify: { count: 2, lastUsed: 20, byWorkspace: { '/proj': 2 } },
+    } },
+  }
+  mock.clock(on)
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path as keyof typeof dirs] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const orders = async () => {
+    const buttons = await ui.findAll({ type: 'Button' })
+    return ['Global', 'Starred', 'Suggested for this repo'].map(section =>
+      buttons.filter(one => one.key?.startsWith(`open:${section}:`)).map(one => one.text).reverse())
+  }
+  const recent = await orders()
+  await ui.press({ key: 'sort:count' })
+  const count = await orders()
+  await ui.press({ key: 'sort:name' })
+  const name = await orders()
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await ui.press({ key: 'refresh' })
+  expect({ recent, count, name, reloaded: await orders(), saved: disk.sort,
+    selected: (await ui.find({ key: 'sort:name' }))?.props.dimColor }).toEqual({
+    recent: Array(3).fill(['verify', 'alpha']),
+    count: Array(3).fill(['alpha', 'verify']),
+    name: Array(3).fill(['alpha', 'verify']),
+    reloaded: Array(3).fill(['alpha', 'verify']), saved: 'name', selected: false,
+  })
+  await ui.unmount()
+})
+
+test('imports history once in the background, skipping subagents and files over 4 MiB', async ($, on) => {
+  const DAY = 24 * 60 * 60 * 1000
+  const clock = mock.clock(on, { now: 40 * DAY })
+  const live = { since: 35 * DAY, byName: { verify: { count: 1, lastUsed: 35 * DAY, byWorkspace: { '/main': 1 } } } }
+  const disk: Record<string, any> = { usage: live }
+  const skillRow = (skill: string, at: number, cwd: string) => JSON.stringify({
+    type: 'assistant', timestamp: new Date(at).toISOString(), cwd,
+    message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill } }] },
+  })
+  const typedRow = (name: string, at: number, cwd: string) => JSON.stringify({
+    type: 'user', timestamp: new Date(at).toISOString(), cwd,
+    message: { content: `<command-message>${name} is running…</command-message>\n<command-name>/${name}</command-name>\n<command-args></command-args>` },
+  })
+  const projects = '/home/u/.claude/projects'
+  const big = `${projects}/-proj/big.jsonl`
+  const files: Record<string, string> = { ...FILES,
+    [`${projects}/-proj/s1.jsonl`]: [
+      skillRow('verify', 10 * DAY, '/proj'),
+      typedRow('verify', 20 * DAY, '/dead/.claude/worktrees/gone'),
+      skillRow('clear', 12 * DAY, '/proj'),
+      skillRow('verify', 38 * DAY, '/proj'),
+      skillRow('verify', 35 * DAY - 1000, '/proj'),
+      'not json',
+      JSON.stringify({ type: 'api-request-shape', shape: { name: 'Skill' } }),
+    ].join('\n'),
+    [big]: Array(5).fill(skillRow('verify', 15 * DAY, '/proj')).join('\n'),
+    [`${projects}/-proj/s1/subagents/agent-1.jsonl`]: skillRow('verify', 15 * DAY, '/proj'),
+  }
+  const dirs: Record<string, any[]> = { ...DIRS,
+    [projects]: [{ name: '-proj', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+    [`${projects}/-proj`]: [
+      { name: 's1.jsonl', kind: 'file', isLink: false, size: 600, mtimeMs: 0 },
+      { name: 'big.jsonl', kind: 'file', isLink: false, size: 4 * 1024 * 1024 + 1, mtimeMs: 0 },
+      { name: 's1', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+    ],
+  }
+  const reads: string[] = []
+  const processes: string[][] = []
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('skill.prompt', () => ({ text: 'expanded' }))
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.log', () => ({ value: undefined }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path === '/proj/.git' || e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => {
+    reads.push(e.path)
+    return (e.path === '/proj/.git' ? { value: 'gitdir: /main/.git/worktrees/topic\n' } : e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any
+  })
+  on('process.run', (_, e: any) => {
+    processes.push([...e.argv])
+    return { value: { exitCode: 0, stdout: skillRow('verify', 15 * DAY, '/proj'), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeDefined()
+  await clock.advance(2000)
+  expect(disk.history.byName.verify).toEqual({ count: 3, lastUsed: 20 * DAY, byWorkspace: { '/main': 2, '/dead': 1 } })
+  expect(disk.history.byName.clear).toBeUndefined()
+  expect(disk.history.oldest).toBe(10 * DAY)
+  expect(disk.history.importedAt).toBe(40 * DAY + 2000)
+  expect(disk.history.attempts).toBe(0)
+  expect(disk.usage).toEqual(live)
+  expect(processes).toEqual([['grep', '-h', '-F', '-e', '"name":"Skill"', '-e', '<command-name>', big]])
+  expect(reads).not.toContain(big)
+  expect(reads.some(path => path.includes('subagents'))).toBe(false)
+  expect(reads.filter(path => path.endsWith('s1.jsonl')).length).toBe(1)
+  expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /4×\s·\s5d\sago/ })).toBeDefined()
+  // An unused skill dims once the merged history reaches back 30 days, not 30 days after install.
+  expect((await ui.find({ key: 'open:Project:/proj/.claude/skills/good/SKILL.md' }))?.props.dimColor).toBe(true)
+  expect((await ui.find({ type: 'Text', text: /^Counts since / }))?.text).toBe(
+    `Counts since ${new Date(10 * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`)
+  await ui.unmount()
+  const history = JSON.stringify(disk.history)
+  await $.skill.prompt({ skill: 'verify', text: 'x' })
+  expect(JSON.stringify(disk.history)).toBe(history)
+  expect(disk.usage.byName.verify.count).toBe(2)
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.advance(2000)
+  expect(disk.usage.byName.verify.count + disk.history.byName.verify.count).toBe(5)
+  expect(reads.filter(path => path.endsWith('s1.jsonl')).length).toBe(1)
 })
