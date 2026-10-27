@@ -14,6 +14,24 @@ Amendment: decision 1 resolved as "read files over 4 MiB with grep where it exis
 1. **Coverage: 59 % of Skill calls, 55 % of typed commands, because `$.fs.read` refuses files over 4 MiB.** Of Phil's 3,146 top-level transcripts, 206 are over 4 MiB and hold 928 of the 2,274 real Skill tool calls and 445 of the 997 typed slash commands; the mod cannot read them through `$.fs` (no range read, same cap for `as: "bytes"`). My pick: ship with the skip, counted in the completion receipt, and keep a `grep`-based fallback on the Cut list with these numbers. A bare "yes" starts T1. The alternative (a `$.process.run(["grep", …])` pass for the 206 files) breaks the intent's "no shell tools" constraint and adds a second parser.
 2. **`since` after the import is the oldest counted use, not the oldest transcript** (the intent says transcript). With a 41 % hole, "Counts since Mar 21" would overstate coverage; the oldest counted use is what the footer can stand behind, and it costs no extra parsing (the oldest transcript's date would mean parsing every row's timestamp). My pick: oldest counted use.
 
+## Amendment 2 (Codex Astra plan review, 2026-10-26) — overrides T1/T2/T3 where they conflict
+
+Two Critical findings changed the storage design; two Warnings were plan defects that would fail the plan's own test and are fixed here rather than filed.
+
+**A. History lives in its own store key, never written by live counting (fixes Critical 1, concurrent overwrite).**
+- New store key `HISTORY_KEY = 'history'` holding `History = { byName: Record<string, Use>, oldest?: number, importedAt?: number, attempts: number }`. `record()` and `savedUsage()` are NOT changed to carry any marker (drop T2 step 3's `history` pass-through and the `Usage.history` type); `usage` stays exactly as live counting writes it today.
+- Only the importer writes `history`: `finish()` re-reads `history`, abandons if `importedAt` is set, else writes `{ byName: found, oldest, importedAt: now, attempts }`; `fail()` re-reads and writes `attempts + 1` only when `importedAt` is unset. Two importers racing write near-identical snapshots; no live count can be lost because live counts are in a different key.
+- A `history` atom (mirroring `usage`) is loaded in `refresh` and updated by `finish()`. The Pane render, Suggested, sorting and the 30-day dim read a merged view computed in render: `combined(name) = { count: live.count + hist.count, lastUsed: max, byWorkspace: summed per key }`, and the footer date is `min(usage.since, history.oldest)`. The session hook skips the import when `history.importedAt` is set or `history.attempts >= 2`.
+
+**B. Boundary margin (fixes Critical 2, first live use counted twice).**
+- `cutoff = (usage.since ?? startedAt) - BOUNDARY` with `const BOUNDARY = 5 * 60 * 1000`. A transcript row's Skill call is written before `skill.prompt` stamps `since`, by milliseconds to seconds; dropping the 5 minutes before the first live use makes imported and live sets disjoint. Error direction: undercount of at most the uses in those 5 minutes, never a double count. T1's fixture dates sit days apart, so its expected numbers do not change; T1 adds one row stamped `since - 1000` for a listed skill and asserts it is NOT counted.
+
+**C. "Importing history…" moves into T2 (fixes Warning 3).** The `importing` atom and its one dim line in the Pane render are part of T2, so T2 can turn T1 fully green; T3 keeps README, version 0.4.0 and the footer text only.
+
+**D. T1 answers `ui.log` (fixes Warning 4).** The T1 test registers `on('ui.log', () => ({ value: undefined }))` with the other hooks, before the first `$` call.
+
+**T1 assertion updates implied by A:** step 3 reads imported counts from `disk.history.byName` (verify = `{ count: 2, … }` historical uses only, plus the grep use) and the live entry stays untouched in `disk.usage`; the pane row shows the combined count; step 3's marker check is `disk.history.importedAt === 40 * DAY + 2000` and `disk.history.attempts === 0`; step 6 asserts a live `skill.prompt` write leaves `disk.history` unchanged; step 7's "no second import" is unchanged. The implementer adjusts the exact literals to the fixture and states them in the receipt.
+
 ## Findings against the working tree and the API types
 
 Checked `/Users/philgetzen/Development/my-skills-mod/.claude-plugin/types/claude-code/index.d.ts` (16,949 lines) and `/Users/philgetzen/.claude/projects` read-only (6,802 `.jsonl` files in 341 project folders; nothing copied beyond field names).
