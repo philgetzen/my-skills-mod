@@ -297,9 +297,30 @@ test('a collapsed section hides its rows and stays collapsed', async ($, on) => 
   const reloaded = await ui.find({ key: verify })
   await ui.press({ key: 'collapse:Global' })
   expect({ ...collapsed, reloaded, reopened: (await ui.find({ key: verify })) !== undefined, saved2: disk.collapsed }).toEqual({
-    row: undefined, folders: undefined, arrow: '▸', title: 'Global (1)', saved: ['Global'],
+    row: undefined, folders: undefined, arrow: '▶\uFE0E', title: 'Global (1)', saved: ['Global'],
     reloaded: undefined, reopened: true, saved2: [],
   })
+  await ui.unmount()
+})
+
+test('the sort row stays at the top of the window as the pane scrolls', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in FILES || e.path in DIRS }))
+  on('fs.list', (_, e: any) => ({ value: DIRS[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, scroll: { offset: 7, bodyRows: 20 } } })
+  const row = await ui.find({ key: 'sort-row' })
+  expect({ position: row?.props.position, top: row?.props.top, label: (await ui.find({ type: 'Text', text: /^Sort/ }))?.text })
+    .toEqual({ position: 'absolute', top: 7, label: 'Sort:' })
   await ui.unmount()
 })
 

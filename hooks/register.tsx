@@ -626,27 +626,41 @@ export const register: Register = (on, options) => {
             {/* The arrow toggles the section; the health count stays in view while it
                 is collapsed. A Button here takes one string, so the bold title sits
                 beside it rather than inside it. */}
-            <Box columnGap={1}>
+            <Box>
               <Button
                 key={`collapse:${section.title}`}
                 plain
                 dimColor
                 onPress={() => setCollapsed($, section.title, !closed.has(section.title))}
               >
-                {closed.has(section.title) ? '▸' : '▾'}
+                {/* U+FE0E keeps ▶ a text glyph rather than an emoji. */}
+                {closed.has(section.title) ? '▶\uFE0E' : '▼'}
               </Button>
               <Text bold>{section.title} ({section.items.length})</Text>
               {section.items.filter(item => item.health?.length).length > 0 && (
-                <Text color="warning">{section.items.filter(item => item.health?.length).length} health</Text>
+                <Text color="warning">{' '}{section.items.filter(item => item.health?.length).length} health</Text>
               )}
             </Box>
           </Box>
         ))}
         {/* One header row: the sort on the left, the selected option at full
-            strength and the others dim, and a quiet Refresh on the right. */}
-        <Box justifyContent="space-between">
+            strength and the others dim, and a quiet Refresh on the right. It is
+            drawn over the top row of the window, wherever the pane is scrolled
+            (a scroll is new props, so it redraws), on the pane's own background;
+            the empty row in the flow keeps the first section from starting under
+            it. Last in the tree, so it paints over every row and card. */}
+        <Box height={1} />
+        <Box
+          key="sort-row"
+          position="absolute"
+          top={e.props.scroll.offset}
+          left={0}
+          right={0}
+          backgroundColor="inverseText"
+          justifyContent="space-between"
+        >
           <Box columnGap={1}>
-            <Text dimColor>Sort</Text>
+            <Text dimColor>Sort:</Text>
             {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
               <Button
                 key={`sort:${value}`}
