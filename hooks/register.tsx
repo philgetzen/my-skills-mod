@@ -203,7 +203,8 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
     { title: 'Global', folders: [tilde(globalDir)], items: sort(global) },
     {
       title: 'User',
-      folders: [tilde(`${home}/.claude/skills`), tilde(`${home}/.claude/commands`)],
+      // With Global left at ~/.claude/skills, User holds only the commands.
+      folders: [...(globalDir === `${home}/.claude/skills` ? [] : [tilde(`${home}/.claude/skills`)]), tilde(`${home}/.claude/commands`)],
       items: sort(user),
     },
     {
@@ -452,7 +453,7 @@ async function setSort($: EngineInterface, order: Sort) {
 
 export const register: Register = (on, options) => {
   let importScheduled = false
-  const globalDir = String(options.globalSkillsDir ?? '~/.config/skillshare/skills')
+  const globalDir = String(options.globalSkillsDir ?? '~/.claude/skills')
 
   on('skill.prompt', async ($, e, next) => {
     const result = await next(e)

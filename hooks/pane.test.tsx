@@ -30,7 +30,7 @@ const DIRS: Record<string, any[]> = {
   '/home/u/.claude/skills/synced': [{ name: 'b1', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
 }
 
-test('four sections, clicks open the file or the Customize page', async ($, on) => {
+test('four sections, clicks open the file or the Customize page', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   mock.clock(on)
   const opened: string[][] = []
   mock.store(on)
@@ -75,7 +75,7 @@ test('four sections, clicks open the file or the Customize page', async ($, on) 
   expect(reads).toContain('/proj/.claude/skills/good/SKILL.md')
 })
 
-test('stars move a skill into Starred and survive a new session', async ($, on) => {
+test('stars move a skill into Starred and survive a new session', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   mock.clock(on)
   mock.store(on)
   on('command.register', () => ({ value: { command: 'my-skills' } }))
@@ -109,7 +109,7 @@ test('stars move a skill into Starred and survive a new session', async ($, on) 
   }
 })
 
-test('stars another thread saved are kept and shown', async ($, on) => {
+test('stars another thread saved are kept and shown', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   mock.clock(on)
   // The store as it is on disk; a second thread writes to it while this pane is open.
   const disk: Record<string, unknown> = {}
@@ -142,7 +142,7 @@ test('stars another thread saved are kept and shown', async ($, on) => {
   await ui.unmount()
 })
 
-test('counts a use, shows it on the row, and leaves the prompt untouched', async ($, on) => {
+test('counts a use, shows it on the row, and leaves the prompt untouched', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const DAY = 24 * 60 * 60 * 1000
   const clock = mock.clock(on, { now: 40 * DAY })
   // One malformed entry already saved; the valid one beside it must survive.
@@ -186,7 +186,7 @@ test('counts a use, shows it on the row, and leaves the prompt untouched', async
   await ui.unmount()
 })
 
-test('health flags a dangling link, a bare skill and a name collision, without reading the link', async ($, on) => {
+test('health flags a dangling link, a bare skill and a name collision, without reading the link', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const files: Record<string, string> = {
     '/home/u/.config/skillshare/skills/verify/SKILL.md': FILES['/home/u/.config/skillshare/skills/verify/SKILL.md']!,
     '/home/u/.claude/skills/mine/SKILL.md': '---\nname: mine\n---\nbody',
@@ -232,7 +232,7 @@ test('health flags a dangling link, a bare skill and a name collision, without r
   await ui.unmount()
 })
 
-test('lists the skills used most in this repo once there are five uses', async ($, on) => {
+test('lists the skills used most in this repo once there are five uses', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const disk: Record<string, any> = {
     usage: { since: 1, byName: { verify: { count: 4, lastUsed: 1, byWorkspace: { '/main': 4 } } } },
   }
@@ -265,7 +265,7 @@ test('lists the skills used most in this repo once there are five uses', async (
   await after.unmount()
 })
 
-test('a collapsed section hides its rows and stays collapsed', async ($, on) => {
+test('a collapsed section hides its rows and stays collapsed', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const verify = 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md'
   const disk: Record<string, any> = {}
   mock.clock(on)
@@ -325,7 +325,7 @@ test('the sort options sit in a box at the top of the list', async ($, on) => {
   await ui.unmount()
 })
 
-test('one saved sort orders every section', async ($, on) => {
+test('one saved sort orders every section', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
   const alpha = '/home/u/.config/skillshare/skills/alpha/SKILL.md'
   const verify = '/home/u/.config/skillshare/skills/verify/SKILL.md'
   const files: Record<string, string> = { ...FILES, [alpha]: '---\ndescription: Alpha\n---' }
@@ -465,4 +465,38 @@ test('imports history once in the background, skipping subagents and files over 
   await clock.advance(2000)
   expect(disk.usage.byName.verify.count + disk.history.byName.verify.count).toBe(5)
   expect(reads.filter(path => path.endsWith('s1.jsonl')).length).toBe(1)
+})
+
+test('with no folder set, Global is ~/.claude/skills and nothing there is flagged as outside it', async ($, on) => {
+  const files: Record<string, string> = {
+    '/home/u/.claude/skills/mine/SKILL.md': '---\ndescription: Mine\n---\nbody',
+    '/home/u/.claude/commands/hi.md': '---\ndescription: Says hi\n---\nbody',
+  }
+  const dirs: Record<string, any[]> = {
+    '/home/u/.claude/skills': [
+      { name: 'mine', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+      { name: 'synced', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 },
+    ],
+    '/home/u/.claude/commands': [{ name: 'hi.md', kind: 'file', isLink: false, size: 0, mtimeMs: 0 }],
+  }
+  mock.clock(on)
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/home/u' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+
+  expect(await ui.find({ key: 'open:Global:/home/u/.claude/skills/mine/SKILL.md' })).toBeDefined()
+  expect((await ui.find({ type: 'Text', text: /Global \(/ }))?.text).toBe('Global (1)')
+  expect((await ui.find({ type: 'Text', text: /User \(/ }))?.text).toBe('User (1)')
+  expect(await ui.find({ type: 'Text', text: /health/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /^~\/\.claude\/commands/ }))?.text).toBe('~/.claude/commands')
+  await ui.unmount()
 })

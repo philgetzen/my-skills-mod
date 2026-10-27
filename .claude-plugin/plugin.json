@@ -1,7 +1,7 @@
 {
   "name": "my-skills",
-  "version": "0.5.0",
-  "description": "Pane listing the skills and commands you created, with use counts, health flags, collapsible sections and the skills you use most in the current repo",
+  "version": "0.6.0",
+  "description": "Claude Code pane listing the skills and commands you wrote or added, with use counts, health flags, collapsible sections and the skills you use most in the current repo",
   "types": "./types/index.d.ts",
   "author": {
     "name": "Phil Getzen"
@@ -10,8 +10,8 @@
     "globalSkillsDir": {
       "type": "string",
       "title": "Global skills folder",
-      "description": "Folder of skills shared across all your agents (shown as Global). Leave the default if you don't use one.",
-      "default": "~/.config/skillshare/skills"
+      "description": "Folder of skills available in every project (shown as Global). Leave the default unless you keep a shared folder for several agents, such as skillshare's ~/.config/skillshare/skills.",
+      "default": "~/.claude/skills"
     }
   }
 }
