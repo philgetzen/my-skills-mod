@@ -8,6 +8,6 @@ export type Usage = { since?: number; byName: Record<string, Use> }
 
 declare module 'claude-code' {
   interface PluginState {
-    'my-skills': { sections: Section[]; starred: string[]; usage: Usage; history: History; importing: boolean; sort: Sort }
+    'my-skills': { sections: Section[]; starred: string[]; usage: Usage; history: History; importing: boolean; sort: Sort; collapsed: string[] }
   }
 }

@@ -17,9 +17,11 @@ The first time it runs, the mod reads your past sessions under `~/.claude/projec
 
 A `!` after a name flags a problem, with the reason in the hover card: the skill has no description, its link points nowhere, the same name appears in two sections, or it sits in `~/.claude/skills` without coming from your Global folder. A section with flagged rows says how many beside its title (`2 health`).
 
-Once you have used skills five times in a project, a **Suggested for this repo** section lists the ones you use most there. Uses in a git worktree count toward its main repo.
+Once you have used skills five times in a project, a **Most used here** section lists the ones you use most there. Uses in a git worktree count toward its main repo.
 
-Hovering a Starred or Suggested skill also shows where it lives (`Global · ~/.config/skillshare/skills/verify/SKILL.md`).
+Hovering a Starred or Most used here skill also shows where it lives (`Global · ~/.config/skillshare/skills/verify/SKILL.md`).
+
+Click the ▾ beside a section's title to collapse it to that one line, and the ▸ to open it again. Collapsed sections stay collapsed across sessions.
 
 Run `/my-skills` to reopen the pane and rescan. The pane also has a Refresh button beside the sort.
 

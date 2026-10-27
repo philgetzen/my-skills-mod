@@ -232,7 +232,7 @@ test('health flags a dangling link, a bare skill and a name collision, without r
   await ui.unmount()
 })
 
-test('suggests the skills used most in this repo once there are five uses', async ($, on) => {
+test('lists the skills used most in this repo once there are five uses', async ($, on) => {
   const disk: Record<string, any> = {
     usage: { since: 1, byName: { verify: { count: 4, lastUsed: 1, byWorkspace: { '/main': 4 } } } },
   }
@@ -252,7 +252,7 @@ test('suggests the skills used most in this repo once there are five uses', asyn
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const before = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await before.find({ type: 'Text', text: /Suggested for this repo/ })).toBeUndefined()
+  expect(await before.find({ type: 'Text', text: /Most used here/ })).toBeUndefined()
   await before.unmount()
 
   await $.skill.prompt({ skill: 'verify', text: 'x' })
@@ -260,9 +260,47 @@ test('suggests the skills used most in this repo once there are five uses', asyn
   expect(disk.usage.byName.verify.byWorkspace).toEqual({ '/main': 5 })
 
   const after = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await after.find({ type: 'Text', text: /Suggested for this repo/ }))?.text).toBe('Suggested for this repo (1)')
-  expect(await after.find({ key: 'open:Suggested for this repo:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
+  expect((await after.find({ type: 'Text', text: /Most used here/ }))?.text).toBe('Most used here (1)')
+  expect(await after.find({ key: 'open:Most used here:/home/u/.config/skillshare/skills/verify/SKILL.md' })).toBeDefined()
   await after.unmount()
+})
+
+test('a collapsed section hides its rows and stays collapsed', async ($, on) => {
+  const verify = 'open:Global:/home/u/.config/skillshare/skills/verify/SKILL.md'
+  const disk: Record<string, any> = {}
+  mock.clock(on)
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in FILES || e.path in DIRS }))
+  on('fs.list', (_, e: any) => ({ value: DIRS[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ key: verify })).toBeDefined()
+  await ui.press({ key: 'collapse:Global' })
+  const collapsed = {
+    row: await ui.find({ key: verify }),
+    folders: await ui.find({ type: 'Text', text: '~/.config/skillshare/skills' }),
+    arrow: (await ui.find({ key: 'collapse:Global' }))?.text,
+    title: (await ui.find({ type: 'Text', text: /Global \(/ }))?.text,
+    saved: disk.collapsed,
+  }
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await ui.press({ key: 'refresh' })
+  const reloaded = await ui.find({ key: verify })
+  await ui.press({ key: 'collapse:Global' })
+  expect({ ...collapsed, reloaded, reopened: (await ui.find({ key: verify })) !== undefined, saved2: disk.collapsed }).toEqual({
+    row: undefined, folders: undefined, arrow: '▸', title: 'Global (1)', saved: ['Global'],
+    reloaded: undefined, reopened: true, saved2: [],
+  })
+  await ui.unmount()
 })
 
 test('one saved sort orders every section', async ($, on) => {
@@ -297,7 +335,7 @@ test('one saved sort orders every section', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const orders = async () => {
     const buttons = await ui.findAll({ type: 'Button' })
-    return ['Global', 'Starred', 'Suggested for this repo'].map(section =>
+    return ['Global', 'Starred', 'Most used here'].map(section =>
       buttons.filter(one => one.key?.startsWith(`open:${section}:`)).map(one => one.text).reverse())
   }
   const recent = await orders()

@@ -20,6 +20,9 @@ const BOUNDARY = 5 * 60 * 1000
 const WORKTREE = /\/\.claude\/worktrees\/[^/]+(\/.*)?$/
 const sort = atom({ plugin: 'my-skills', key: 'sort' } as const, 'recent')
 const SORT_KEY = 'sort'
+// The titles of the collapsed sections, kept in `$.store` like the stars.
+const collapsed = atom({ plugin: 'my-skills', key: 'collapsed' } as const, [])
+const COLLAPSED_KEY = 'collapsed'
 // Each flag says what is wrong and what to do about it, shown first in the hover card.
 const DANGLING = "Broken link: this entry points to something that isn't a skill folder. Delete the link, or point it at the skill's folder."
 const BARE = "No description: Claude can't tell when to use it. Add a description: line to the top of its file."
@@ -236,6 +239,13 @@ async function refresh($: EngineInterface, globalSetting: string) {
   await update($, history, () => imported)
   const order = await $.store.get(SORT_KEY)
   await update($, sort, () => order === 'count' || order === 'name' ? order : 'recent')
+  const closed = await savedCollapsed($)
+  await update($, collapsed, () => closed)
+}
+
+async function savedCollapsed($: EngineInterface): Promise<string[]> {
+  const saved = await $.store.get(COLLAPSED_KEY)
+  return Array.isArray(saved) ? saved.filter((one): one is string => typeof one === 'string') : []
 }
 
 async function savedStars($: EngineInterface): Promise<string[]> {
@@ -427,6 +437,14 @@ async function setStar($: EngineInterface, target: string, isStarred: boolean) {
   await update($, starred, () => next)
 }
 
+// Starts from what is saved now, like a star, so another thread's choices are kept.
+async function setCollapsed($: EngineInterface, title: string, isCollapsed: boolean) {
+  const others = (await savedCollapsed($)).filter(one => one !== title)
+  const next = isCollapsed ? [...others, title] : others
+  await $.store.set(COLLAPSED_KEY, next)
+  await update($, collapsed, () => next)
+}
+
 async function setSort($: EngineInterface, order: Sort) {
   if (await $.store.get(SORT_KEY) !== order) await $.store.set(SORT_KEY, order)
   await update($, sort, () => order)
@@ -485,6 +503,7 @@ export const register: Register = (on, options) => {
     const busy = await read($, importing)
     const since = Math.min(saved.since ?? Infinity, imported.oldest ?? Infinity)
     const order = await read($, sort)
+    const closed = new Set(await read($, collapsed))
     const home = (await $.env.get('HOME')) ?? ''
     const now = await $.clock.now()
     const useOf = (item: Item) => {
@@ -512,7 +531,7 @@ export const register: Register = (on, options) => {
       .slice(0, 5)
     const total = inRepo.reduce((sum, item) => sum + (useOf(item)?.byWorkspace[root] ?? 0), 0)
     const shown: Section[] = [
-      ...(total >= 5 ? [{ title: 'Suggested for this repo', folders: [`Most used in ${root}`], items: inRepo }] : []),
+      ...(total >= 5 ? [{ title: 'Most used here', folders: [`Most used in ${root}`], items: inRepo }] : []),
       { title: 'Starred', folders: ['Click ☆ beside a name to star it'], items: starredItems },
       ...list,
     ]
@@ -533,8 +552,8 @@ export const register: Register = (on, options) => {
         </Box>
         {[...shown].reverse().map(section => (
           <Box key={section.title} flexDirection="column-reverse" marginTop={1}>
-            {[...section.items].sort(compare).reverse().map(item => {
-              const origin = section.title === 'Starred' || section.title === 'Suggested for this repo'
+            {!closed.has(section.title) && [...section.items].sort(compare).reverse().map(item => {
+              const origin = section.title === 'Starred' || section.title === 'Most used here'
                 ? list.find(source => source.items.includes(item))?.title : undefined
               const path = home && item.target.startsWith(`${home}/`) ? `~${item.target.slice(home.length)}` : item.target
               const use = useOf(item)
@@ -602,9 +621,20 @@ export const register: Register = (on, options) => {
                 </Box>
               )
             })}
-            {section.items.length === 0 && <Text dimColor>none</Text>}
-            <Text dimColor>{section.folders.join(', ')}</Text>
+            {!closed.has(section.title) && section.items.length === 0 && <Text dimColor>none</Text>}
+            {!closed.has(section.title) && <Text dimColor>{section.folders.join(', ')}</Text>}
+            {/* The arrow toggles the section; the health count stays in view while it
+                is collapsed. A Button here takes one string, so the bold title sits
+                beside it rather than inside it. */}
             <Box columnGap={1}>
+              <Button
+                key={`collapse:${section.title}`}
+                plain
+                dimColor
+                onPress={() => setCollapsed($, section.title, !closed.has(section.title))}
+              >
+                {closed.has(section.title) ? '▸' : '▾'}
+              </Button>
               <Text bold>{section.title} ({section.items.length})</Text>
               {section.items.filter(item => item.health?.length).length > 0 && (
                 <Text color="warning">{section.items.filter(item => item.health?.length).length} health</Text>
