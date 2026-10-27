@@ -70,7 +70,7 @@ A `!` after a name means one of these, and the hover card leads with the fix:
 - **No description.** Claude can't tell when to use the skill. Add a `description:` line to the top of its file.
 - **Broken link.** The entry points at something that isn't a skill folder. Delete the link or repoint it.
 - **Same name in two sections.** Both answer to `/name`, so the wrong one may load. Rename or remove one.
-- **Not in your Global folder.** Only when Global points at a shared folder: a skill in `~/.claude/skills` that didn't come from it, so your other agents don't get it. See [Using skillshare](#using-skillshare).
+- **Not in your Global folder.** Only when Global points at a shared folder that has skills in it: a skill in `~/.claude/skills` that didn't come from it, so your other agents don't get it. See [Using skillshare](#using-skillshare).
 
 A section with flagged rows shows the count beside its title (`2 health`), and the count stays visible when the section is collapsed.
 
@@ -85,7 +85,7 @@ Everything stays on your machine. The mod reads your skill folders and session t
 1. Set **Global skills folder** to `~/.config/skillshare/skills` (or wherever your skillshare source lives). The install asks for it; to change it later, open `/config` and find the my-skills setting.
 2. Start a new session or run `/my-skills`.
 
-Global then lists your shared folder, and User lists anything in `~/.claude/skills` that skillshare didn't put there. Each of those gets a **Not in your Global folder** flag, because your other agents won't see it. Run `skillshare collect claude` to move it into the shared folder, or delete it if it's a leftover.
+Global then lists your shared folder, and User lists anything in `~/.claude/skills` that skillshare didn't put there. Once the shared folder has skills in it, each of those User skills gets a **Not in your Global folder** flag, because your other agents won't see it. Run `skillshare collect claude` to move it into the shared folder, or delete it if it's a leftover.
 
 ## Settings
 
