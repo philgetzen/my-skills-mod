@@ -94,7 +94,6 @@ export function trendWord(points: number[]): 'rising' | 'steady' | 'fading' | 'n
   if (sum(points) === 0) return 'no use'
   const first = sum(points.slice(0, 3)) / 3
   const last = sum(points.slice(-3)) / 3
-  if (first === 0) return 'rising'
   if (last > first * 1.2) return 'rising'
   if (last < first * 0.8) return 'fading'
   return 'steady'
@@ -367,8 +366,19 @@ const stamp = (now: number) => {
 async function removeCopy($: EngineInterface, item: Item, source: Source, globalSetting: string) {
   const home = (await $.env.get('HOME')) ?? ''
   const name = bare(item.name)
-  const viaSkillshare = source === 'Global' && expand(globalSetting, home) !== `${home}/.claude/skills` &&
-    SKILLSHARE_NAME.test(name) && name !== 'agents'
+  // Global counts as skillshare's only when it resolves to skillshare's own
+  // folder: any other shared folder (or a trailing slash) would point
+  // `skillshare uninstall` at a different copy than the one picked.
+  const real = async (path: string) => {
+    const plain = path.replace(/\/+$/, '')
+    try {
+      return (await $.fs.stat(plain, { resolve: true })).realPath ?? plain
+    } catch {
+      return plain
+    }
+  }
+  const viaSkillshare = source === 'Global' && SKILLSHARE_NAME.test(name) && name !== 'agents' &&
+    (await real(expand(globalSetting, home))) === (await real(`${home}/.config/skillshare/skills`))
   const argv = viaSkillshare
     ? ['skillshare', 'uninstall', name, '-g', '--force']
     : ['mv', removable(item), `${home}/.Trash/${name} ${stamp(await $.clock.now())}`]
@@ -517,6 +527,11 @@ async function importHistory($: EngineInterface) {
         for (const [name, use] of Object.entries(saved.byName)) {
           const seen = Object.hasOwn(found, name) ? found[name]!.days : undefined
           byName[name] = seen ? { ...use, days: pruneDays(seen, now) } : use
+        }
+        // A name the first import did not list (added since) has no stored count
+        // to lose, so its found uses go in whole.
+        for (const [name, use] of Object.entries(found)) {
+          if (!Object.hasOwn(byName, name)) byName[name] = { ...use, days: pruneDays(use.days ?? {}, now) }
         }
         const next: History = { ...saved, byName, attempts: 0, version: HISTORY_VERSION }
         await $.store.set(HISTORY_KEY, next)
