@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My skills panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#FFFFFF}
+a{color:#1F1E1D}a:hover{color:#000000}
+.row:hover{background:#F4F2EC}
+.ib:hover{background:#F0EEE7}
+.seg:hover{color:#1F1E1D}
+.sechead:hover{background:#F7F5F0}
+</style>
+</helmet>
+<div style="width: 380px; min-height: 1760px; box-sizing: border-box; background: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1F1E1D; display: flex; flex-direction: column">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 10px 8px 10px 20px; border-bottom: 1px solid #ECEAE3">
+    <h1 style="margin: 0; font-size: 16px; font-weight: 600; flex: 1">Skills <span style="font-weight: 400; color: #73726C">81</span></h1>
+    <button class="ib" onClick="{{toggleSearch}}" aria-expanded="{{searchOpen}}" aria-label="Search skills" style="width: 44px; height: 44px; border: 0; border-radius: 10px; color: #4A4945; display: grid; place-items: center; cursor: pointer; background: {{searchBg}}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+    <button class="ib" aria-label="Refresh" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #4A4945; display: grid; place-items: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7"></path><path d="M20 4v5h-5"></path></svg></button>
+    <button class="ib" aria-label="Expand panel" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #4A4945; display: grid; place-items: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-7 7"></path><path d="M10 20H4v-6"></path><path d="M4 20l7-7"></path></svg></button>
+    <button class="ib" aria-label="Close" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #4A4945; display: grid; place-items: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+  </header>
+
+  <sc-if value="{{searchOpen}}" hint-placeholder-val="{{ false }}">
+    <div style="padding: 12px 16px 0">
+      <label for="q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search skills</label>
+      <div style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 6px 0 12px; border: 1.5px solid #1F1E1D; border-radius: 10px; background: #FFFFFF">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#73726C" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input id="q" type="search" autofocus="autofocus" value="{{q}}" onChange="{{onQuery}}" onKeyDown="{{onQueryKey}}" placeholder="Search name or source" style="flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 14px; color: #1F1E1D; background: transparent">
+        <sc-if value="{{hasQuery}}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{clearQuery}}" aria-label="Clear search" style="width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: #73726C; display: grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{browsing}}" hint-placeholder-val="{{ true }}">
+  <section aria-label="Health" style="margin: 16px 16px 4px; border: 1px solid #F0DDB5; background: #FDF8EC; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>
+      <h2 style="margin: 0; font-size: 14px; font-weight: 600; color: #6B4600; flex: 1">10 skills need attention</h2>
+    </div>
+    <a href="Detail.dc.html" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; background: #FFFFFF; border: 1px solid #F0DDB5; border-radius: 8px; text-decoration: none; color: #1F1E1D">
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+        <span style="font-size: 13px; font-weight: 600">phil-writing</span>
+        <span style="font-size: 12px; color: #6B4600">Name collision · Global and Account</span>
+      </span>
+      <span style="font-size: 13px; font-weight: 600; color: #8A5A00">Fix</span>
+    </a>
+    <button style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 10px; background: #FFFFFF; border: 1px solid #F0DDB5; border-radius: 8px; color: #1F1E1D; font: inherit; text-align: left; cursor: pointer">
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+        <span style="font-size: 13px; font-weight: 600">9 User skills</span>
+        <span style="font-size: 12px; color: #6B4600">~/.claude/skills · [REASON]</span>
+      </span>
+      <span style="font-size: 13px; font-weight: 600; color: #8A5A00">Review</span>
+    </button>
+  </section>
+  </sc-if>
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 16px 16px 8px">
+    <span id="sortlbl" style="font-size: 12px; color: #73726C">Sort</span>
+    <div role="group" aria-labelledby="sortlbl" style="display: flex; flex: 1; background: #F0EEE7; border-radius: 10px; padding: 3px; gap: 2px">
+      <sc-for list="{{sorts}}" as="s" hint-placeholder-count="3">
+        <button class="seg" onClick="{{s.pick}}" aria-pressed="{{s.pressed}}" style="flex: 1; min-height: 38px; border: 0; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; background: {{s.bg}}; color: {{s.fg}}; font-weight: {{s.weight}}; box-shadow: {{s.shadow}}">{{s.label}}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{hasQuery}}" hint-placeholder-val="{{ false }}">
+    <section aria-label="Search results" style="padding: 4px 10px 0">
+      <p aria-live="polite" style="margin: 0; padding: 8px 10px; font-size: 12px; color: #73726C">{{resultLabel}}</p>
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{results}}" as="r" hint-placeholder-count="4">
+          <div class="row" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px 0 2px; border-radius: 8px">
+            <button onClick="{{r.toggle}}" aria-label="{{r.starLabel}}" aria-pressed="{{r.starred}}" style="width: 32px; height: 32px; flex: none; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{r.starColor}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+              <span style="display: flex; align-items: center; gap: 6px; min-width: 0">
+                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: {{r.nameColor}}">{{r.name}}</span>
+                <sc-if value="{{r.flag}}" hint-placeholder-val="{{ false }}">
+                  <svg role="img" aria-label="Needs attention" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A86A00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>
+                </sc-if>
+              </span>
+              <span style="font-size: 12px; color: #73726C">{{r.scopeLabel}}</span>
+            </span>
+            <svg role="img" aria-label="{{r.trendLabel}}" width="44" height="18" viewBox="0 0 44 18" fill="none" style="flex: none"><polyline points="{{r.spark}}" stroke="{{r.sparkColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+            <span style="width: 36px; flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #4A4945">{{r.usesLabel}}</span>
+            <span style="width: 40px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #73726C">{{r.agoLabel}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{browsing}}" hint-placeholder-val="{{ true }}">
+  <section style="padding: 8px 10px 0">
+    <button class="sechead" onClick="{{toggleHere}}" aria-expanded="{{hereOpen}}" style="width: 100%; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font: inherit; cursor: pointer; color: #1F1E1D; text-align: left">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#73726C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: {{hereRot}}"><path d="M9 6l6 6-6 6"></path></svg>
+      <span style="font-size: 13px; font-weight: 600">Active here</span>
+      <span style="font-size: 12px; color: #73726C; flex: 1">~/Development</span>
+      <span style="font-size: 12px; color: #73726C">5</span>
+    </button>
+    <sc-if value="{{hereOpen}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{here}}" as="r" hint-placeholder-count="5">
+          <div class="row" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px 0 2px; border-radius: 8px">
+            <button onClick="{{r.toggle}}" aria-label="{{r.starLabel}}" aria-pressed="{{r.starred}}" style="width: 32px; height: 32px; flex: none; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{r.starColor}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+            <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: {{r.nameColor}}">{{r.name}}</span>
+            <svg role="img" aria-label="{{r.trendLabel}}" width="44" height="18" viewBox="0 0 44 18" fill="none" style="flex: none"><polyline points="{{r.spark}}" stroke="{{r.sparkColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+            <span style="width: 36px; flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #4A4945">{{r.usesLabel}}</span>
+            <span style="width: 40px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #73726C">{{r.agoLabel}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </section>
+
+  <section style="padding: 8px 10px 0; border-top: 1px solid #F0EEE7; margin-top: 8px">
+    <button class="sechead" onClick="{{toggleStar}}" aria-expanded="{{starOpen}}" style="width: 100%; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; font: inherit; cursor: pointer; color: #1F1E1D; text-align: left">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#73726C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: {{starRot}}"><path d="M9 6l6 6-6 6"></path></svg>
+      <span style="font-size: 13px; font-weight: 600; flex: 1">Starred</span>
+      <span style="font-size: 12px; color: #73726C">{{starCount}}</span>
+    </button>
+    <sc-if value="{{starOpen}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{starActive}}" as="r" hint-placeholder-count="5">
+          <div class="row" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px 0 2px; border-radius: 8px">
+            <button onClick="{{r.toggle}}" aria-label="{{r.starLabel}}" aria-pressed="{{r.starred}}" style="width: 32px; height: 32px; flex: none; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{r.starColor}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+            <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: {{r.nameColor}}">{{r.name}}</span>
+            <svg role="img" aria-label="{{r.trendLabel}}" width="44" height="18" viewBox="0 0 44 18" fill="none" style="flex: none"><polyline points="{{r.spark}}" stroke="{{r.sparkColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+            <span style="width: 36px; flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #4A4945">{{r.usesLabel}}</span>
+            <span style="width: 40px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #73726C">{{r.agoLabel}}</span>
+          </div>
+        </sc-for>
+        <button onClick="{{toggleIdle}}" aria-expanded="{{idleOpen}}" class="sechead" style="min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 40px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 12px; color: #73726C; cursor: pointer; text-align: left">
+          <span style="flex: 1">{{idleLabel}}</span>
+          <span style="color: #4A4945">{{idleAction}}</span>
+        </button>
+        <sc-if value="{{idleOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column">
+            <sc-for list="{{starIdle}}" as="r" hint-placeholder-count="4">
+              <div class="row" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px 0 2px; border-radius: 8px">
+                <button onClick="{{r.toggle}}" aria-label="{{r.starLabel}}" aria-pressed="{{r.starred}}" style="width: 32px; height: 32px; flex: none; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{r.starColor}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+                <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: #5F5E5A">{{r.name}}</span>
+                <svg role="img" aria-label="{{r.trendLabel}}" width="44" height="18" viewBox="0 0 44 18" fill="none" style="flex: none"><polyline points="{{r.spark}}" stroke="{{r.sparkColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+                <span style="width: 36px; flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #5F5E5A">{{r.usesLabel}}</span>
+                <span style="width: 40px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #73726C">{{r.agoLabel}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </section>
+
+  <section style="padding: 8px 10px 0; border-top: 1px solid #F0EEE7; margin-top: 8px">
+    <div style="min-height: 44px; display: flex; align-items: center; padding: 0 10px">
+      <h2 style="margin: 0; font-size: 13px; font-weight: 600; flex: 1">All skills</h2>
+      <span style="font-size: 12px; color: #73726C">{{sortNote}}</span>
+    </div>
+    <div role="group" aria-label="Filter by source" style="display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 8px">
+      <sc-for list="{{scopes}}" as="c" hint-placeholder-count="5">
+        <button onClick="{{c.pick}}" aria-pressed="{{c.pressed}}" style="min-height: 32px; padding: 0 10px; border-radius: 999px; font: inherit; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; border: 1px solid {{c.border}}; background: {{c.bg}}; color: {{c.fg}}">{{c.label}} <span style="opacity: 0.75">{{c.count}}</span><sc-if value="{{c.flag}}" hint-placeholder-val="{{ false }}"><span aria-label="has issues" style="width: 6px; height: 6px; border-radius: 3px; background: #C27C0E"></span></sc-if></button>
+      </sc-for>
+    </div>
+    <p style="margin: 0; padding: 0 10px 6px; font-size: 12px; color: #73726C">{{scopePath}}</p>
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{all}}" as="r" hint-placeholder-count="10">
+        <div class="row" style="display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px 0 2px; border-radius: 8px">
+          <button onClick="{{r.toggle}}" aria-label="{{r.starLabel}}" aria-pressed="{{r.starred}}" style="width: 32px; height: 32px; flex: none; border: 0; border-radius: 6px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{r.starColor}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="{{r.starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+          <span style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px">
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: {{r.nameColor}}">{{r.name}}</span>
+            <sc-if value="{{r.flag}}" hint-placeholder-val="{{ false }}">
+              <svg role="img" aria-label="Needs attention" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A86A00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>
+            </sc-if>
+          </span>
+          <svg role="img" aria-label="{{r.trendLabel}}" width="44" height="18" viewBox="0 0 44 18" fill="none" style="flex: none"><polyline points="{{r.spark}}" stroke="{{r.sparkColor}}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+          <span style="width: 36px; flex: none; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #4A4945">{{r.usesLabel}}</span>
+          <span style="width: 40px; flex: none; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #73726C">{{r.agoLabel}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{hasMore}}" hint-placeholder-val="{{ true }}">
+      <button class="sechead" style="width: 100%; min-height: 44px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 13px; color: #4A4945; cursor: pointer">{{moreLabel}}</button>
+    </sc-if>
+  </section>
+  </sc-if>
+
+  <footer style="margin-top: auto; padding: 16px 20px 20px; font-size: 12px; color: #73726C; border-top: 1px solid #F0EEE7">Uses since Jul 20, preloads included</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":380,"height":1760}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      sort: 'recent', scope: 'global', hereOpen: true, searchOpen: false, q: '', starOpen: true, idleOpen: false,
+      starred: ['ship','needs-me','review-policy','design-dna','hone-product-skills','pgdash-backlog-review','pgdash-backlog-audit','wayfinder','docs-update','product-dna','prototype','release-watch']
+    };
+  }
+  renderVals() {
+    var self = this, st = this.state;
+    var hrs = function (a) { if (!a) return 1e9; var n = parseInt(a, 10); return a.slice(-1) === 'h' ? n : n * 24; };
+    var MAX = 490;
+    var hash = function (s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
+    // Placeholder trend shapes: 10 three-day buckets over the last 30 days. Swap for real per-day counts from the usage log.
+    var spark = function (name, uses, ago) {
+      var H = hrs(ago);
+      if (!uses || H > 720) return { pts: '1,16 43,16', color: '#D6D3CA', label: '30-day trend: no use' };
+      var h = hash(name), dir = (h % 3) - 1, deadFrom = 10 - Math.floor(H / 72), vals = [];
+      for (var i = 0; i < 10; i++) {
+        var n = ((h >> (i % 16)) & 7) / 7;
+        var v = Math.max(0.08, 0.35 + 0.5 * n + dir * (i - 4.5) * 0.09);
+        vals.push(i >= deadFrom ? 0 : v);
+      }
+      var max = Math.max.apply(null, vals) || 1;
+      var a = (vals[0] + vals[1] + vals[2]) / 3, b = (vals[7] + vals[8] + vals[9]) / 3;
+      var t = b > a * 1.2 ? 'rising' : b < a * 0.8 ? 'fading' : 'steady';
+      return {
+        pts: vals.map(function (v, i) { return (1 + i * 42 / 9).toFixed(1) + ',' + (16 - v / max * 13).toFixed(1); }).join(' '),
+        color: t === 'fading' ? '#A9A69C' : '#4A4945', label: '30-day trend: ' + t
+      };
+    };
+    var row = function (d) {
+      var on = st.starred.indexOf(d[0]) >= 0;
+      var sp = spark(d[0], d[1], d[2]);
+      return {
+        spark: sp.pts, sparkColor: sp.color, trendLabel: sp.label,
+        name: d[0], uses: d[1] || 0, ago: d[2], flag: !!d[3], starred: on ? 'true' : 'false',
+        usesLabel: d[1] ? d[1] + '×' : '—', agoLabel: d[2] || 'never',
+        pct: Math.max(d[1] ? 4 : 0, Math.round((d[1] || 0) / MAX * 100)) + '%',
+        nameColor: d[1] ? '#1F1E1D' : '#5F5E5A',
+        starFill: on ? 'currentColor' : 'none', starColor: on ? '#1F1E1D' : '#B5B2A8',
+        starLabel: (on ? 'Unstar ' : 'Star ') + d[0],
+        toggle: function () {
+          var s = st.starred.slice(), i = s.indexOf(d[0]);
+          if (i >= 0) s.splice(i, 1); else s.push(d[0]);
+          self.setState({ starred: s });
+        }
+      };
+    };
+    var sorter = function (a, b) {
+      if (st.sort === 'used') return b.uses - a.uses || a.name.localeCompare(b.name);
+      if (st.sort === 'name') return a.name.localeCompare(b.name);
+      return hrs(a.ago) - hrs(b.ago) || b.uses - a.uses;
+    };
+    var catalog = {
+      global: [['unattended-verifier',13,'4h'],['peers',333,'17h'],['loose-ends',352,'17h'],['session-handoff',490,'17h'],['handoff',150,'17h'],['phil-writing',40,'18h',1],['qa',1,'18h'],['accountability-review',2,'1d'],['mistake',131,'1d'],['pickup',312,'1d'],['verify',98,'1d'],['ship',15,'1d'],['best-practices',17,'3d'],['needs-me',1,'3d'],['grilling',57,'3d'],['review-policy',8,'3d'],['design-dna',53,'4d'],['hone-product-skills',4,'4d'],['pgdash-backlog-review',2,'33d'],['pgdash-backlog-audit',4,'35d'],['wayfinder',30,'46d'],['docs-update',4,'64d'],['product-dna'],['prototype'],['release-watch'],['outfit-design'],['top3-review'],['triage'],['writing-shape']],
+      user: [['cloudflare-email-service',3,'16d',1],['agents-sdk',0,null,1],['cloudflare',0,null,1],['durable-objects',0,null,1],['sandbox-sdk',0,null,1],['turnstile-spin',0,null,1],['web-perf',0,null,1],['workers-best-practices',0,null,1],['wrangler',0,null,1]],
+      account: [['phil-writing',40,'18h',1],['add-feature-flag',2,'12d'],['consulting-insights-writer'],['lightning-talk'],['publish-to-sanity'],['social-brand-voice'],['social-platform-guide']],
+      project: []
+    };
+    var byName = {};
+    ['global','user','account'].forEach(function (k) { catalog[k].forEach(function (d) { byName[d[0]] = d; }); });
+    var here = [byName['peers'], byName['loose-ends'], byName['session-handoff'], byName['handoff'], byName['pickup']].map(row).sort(sorter);
+    var starredRows = st.starred.map(function (n) { return row(byName[n] || [n]); }).sort(sorter);
+    var starActive = starredRows.filter(function (r) { return hrs(r.ago) <= 720; });
+    var starIdle = starredRows.filter(function (r) { return hrs(r.ago) > 720; });
+    var scopeMeta = [['global','Global',65,'~/.config/skillshare/skills',false],['user','User',9,'~/.claude/skills · ~/.claude/commands',true],['account','Account',7,'claude.ai › Customize › Skills',true],['project','Project',0,'~/Development/.claude · none yet',false]];
+    var scopes = scopeMeta.map(function (m) {
+      var on = st.scope === m[0];
+      return { label: m[1], count: m[2], flag: m[4] || m[0] === 'global', pressed: on ? 'true' : 'false',
+        bg: on ? '#1F1E1D' : '#FFFFFF', fg: on ? '#FFFFFF' : '#4A4945', border: on ? '#1F1E1D' : '#DEDBD2',
+        pick: function () { self.setState({ scope: m[0] }); } };
+    });
+    var cur = scopeMeta.filter(function (m) { return m[0] === st.scope; })[0];
+    var list = catalog[st.scope].map(row).sort(sorter);
+    var shown = list.slice(0, 12);
+    var sorts = [['recent','Recent'],['used','Most used'],['name','Name']].map(function (s) {
+      var on = st.sort === s[0];
+      return { label: s[1], pressed: on ? 'true' : 'false', bg: on ? '#FFFFFF' : 'transparent', fg: on ? '#1F1E1D' : '#5F5E5A',
+        weight: on ? 600 : 400, shadow: on ? '0 1px 2px rgba(31,30,29,0.12)' : 'none',
+        pick: function () { self.setState({ sort: s[0] }); } };
+    });
+    var q = (st.q || '').trim().toLowerCase();
+    var results = [];
+    if (q) {
+      scopeMeta.forEach(function (m) {
+        catalog[m[0]].forEach(function (d) {
+          if ((d[0] + ' ' + m[1]).toLowerCase().indexOf(q) >= 0) {
+            var r = row(d); r.scopeLabel = m[1]; results.push(r);
+          }
+        });
+      });
+      results.sort(sorter);
+    }
+    var sortName = { recent: 'recent', used: 'most used', name: 'name' }[st.sort];
+    return {
+      searchOpen: st.searchOpen, searchBg: st.searchOpen ? '#F0EEE7' : 'transparent',
+      toggleSearch: function () { self.setState({ searchOpen: !st.searchOpen, q: st.searchOpen ? '' : st.q }); },
+      q: st.q, hasQuery: !!q, browsing: !q,
+      onQuery: function (e) { self.setState({ q: e.target.value }); },
+      onQueryKey: function (e) { if (e.key === 'Escape') self.setState({ q: '', searchOpen: false }); },
+      clearQuery: function () { self.setState({ q: '' }); },
+      results: results,
+      resultLabel: results.length ? results.length + (results.length === 1 ? ' match' : ' matches') + ' across all sources · by ' + sortName : 'No skills match “' + st.q.trim() + '”',
+      sortNote: 'by ' + sortName,
+      sorts: sorts, scopes: scopes, scopePath: cur[3],
+      here: here, hereOpen: st.hereOpen, hereRot: st.hereOpen ? 'rotate(90deg)' : 'none',
+      toggleHere: function () { self.setState({ hereOpen: !st.hereOpen }); },
+      starActive: starActive, starIdle: starIdle, starCount: starredRows.length,
+      starOpen: st.starOpen, starRot: st.starOpen ? 'rotate(90deg)' : 'none',
+      toggleStar: function () { self.setState({ starOpen: !st.starOpen }); },
+      idleOpen: st.idleOpen, idleLabel: starIdle.length + ' idle · no use in 30+ days',
+      idleAction: st.idleOpen ? 'Hide' : 'Show',
+      toggleIdle: function () { self.setState({ idleOpen: !st.idleOpen }); },
+      all: shown, hasMore: cur[2] > shown.length,
+      moreLabel: 'Show all ' + cur[2]
+    };
+  }
+}
+</script>
+</body>
+</html>

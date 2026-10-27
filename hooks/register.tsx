@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { History, Item, Section, Sort, Usage, Use } from '../types'
+import type { History, Issue, Item, Section, Sort, Usage, Use } from '../types'
 
 const PANE = 'my-skills'
 const sections = atom({ plugin: 'my-skills', key: 'sections' } as const, [])
@@ -31,6 +31,45 @@ const clash = (name: string, other: string[]) =>
   `Same name in ${other.join(' and ')}: both answer to /${name}, so the wrong one may load. Rename or remove one.`
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
+const HISTORY_VERSION = 2
+const DAYS_KEPT = 30
+
+const pad = (n: number) => String(n).padStart(2, '0')
+// A local calendar date, 'YYYY-MM-DD'.
+const dayKey = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+// The local date `ago` days before `now`, stepped by calendar so a DST change cannot skip a day.
+const dayAgo = (now: number, ago: number) => {
+  const date = new Date(now)
+  date.setDate(date.getDate() - ago)
+  return dayKey(date)
+}
+// Keeps the last 30 local days, today included.
+function pruneDays(days: Record<string, number>, now: number): Record<string, number> {
+  const keep = new Set(Array.from({ length: DAYS_KEPT }, (_, i) => dayAgo(now, i)))
+  return Object.fromEntries(Object.entries(days).filter(([key, count]) => keep.has(key) && count > 0))
+}
+
+// Ten buckets of three local days each, oldest first; the last one ends today.
+export function trendPoints(days: Record<string, number> | undefined, now: number): number[] {
+  const points = Array.from({ length: 10 }, () => 0)
+  if (!days) return points
+  for (let ago = 0; ago < 30; ago++) {
+    const count = Object.hasOwn(days, dayAgo(now, ago)) ? days[dayAgo(now, ago)]! : 0
+    points[9 - Math.floor(ago / 3)]! += count
+  }
+  return points
+}
+
+export function trendWord(points: number[]): 'rising' | 'steady' | 'fading' | 'no use' {
+  const sum = (list: number[]) => list.reduce((a, b) => a + b, 0)
+  if (sum(points) === 0) return 'no use'
+  const first = sum(points.slice(0, 3)) / 3
+  const last = sum(points.slice(-3)) / 3
+  if (first === 0) return 'rising'
+  if (last > first * 1.2) return 'rising'
+  if (last < first * 0.8) return 'fading'
+  return 'steady'
+}
 
 // The `description:` in a file's frontmatter, folded scalars (`>`, `|`) included.
 function frontmatterDescription(text: string): string {
@@ -85,7 +124,7 @@ async function skills($: EngineInterface, folder: string, confineTo?: string): P
       const target = `${folder}/${name}/SKILL.md`
       if (!(await $.fs.exists(target))) {
         return entry.isLink
-          ? { name, target: `${folder}/${name}`, description: '', health: [DANGLING] }
+          ? { name, target: `${folder}/${name}`, description: '', issues: [{ kind: 'dangling', text: DANGLING }] }
           : undefined
       }
       if (confineTo !== undefined && !(await isInside($, target, confineTo))) return undefined
@@ -94,6 +133,8 @@ async function skills($: EngineInterface, folder: string, confineTo?: string): P
   )
   return found.filter((one): one is Item => one !== undefined)
 }
+
+const isDangling = (item: Item) => item.issues?.some(one => one.kind === 'dangling') ?? false
 
 type SyncedSkill = { skillId: string; name: string; description?: string }
 
@@ -169,15 +210,15 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   ]
   for (const [title, items] of lists) {
     for (const item of items) {
-      if (title !== 'Account' && item.description === '' && !item.health?.includes(DANGLING)) {
-        item.health = [...(item.health ?? []), BARE]
+      if (title !== 'Account' && item.description === '' && !isDangling(item)) {
+        item.issues = [...(item.issues ?? []), { kind: 'bare', text: BARE }]
       }
     }
   }
   if (global.length > 0) {
     for (const item of userSkills) {
-      if (!item.health?.includes(DANGLING)) {
-        item.health = [...(item.health ?? []), UNMANAGED]
+      if (!isDangling(item)) {
+        item.issues = [...(item.issues ?? []), { kind: 'unmanaged', text: UNMANAGED }]
       }
     }
   }
@@ -192,7 +233,7 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
     for (const item of items) {
       const name = item.name.replace(/^\//, '')
       const other = (titlesByName.get(name) ?? []).filter(one => one !== title)
-      if (other.length > 0) item.health = [...(item.health ?? []), clash(name, other)]
+      if (other.length > 0) item.issues = [...(item.issues ?? []), { kind: 'collision', text: clash(name, other) }]
     }
   }
 
@@ -270,7 +311,11 @@ async function savedUsage($: EngineInterface): Promise<Usage> {
   const byName: Usage['byName'] = {}
   for (const [name, use] of Object.entries(saved.byName)) {
     if (object(use) && number(use.count) && number(use.lastUsed) && object(use.byWorkspace) &&
-      Object.values(use.byWorkspace).every(number)) byName[name] = use as Usage['byName'][string]
+      Object.values(use.byWorkspace).every(number)) {
+      // A malformed days map is dropped alone, the counts stay.
+      const { days, ...rest } = use
+      byName[name] = (object(days) && Object.values(days).every(number) ? use : rest) as Usage['byName'][string]
+    }
   }
   return number(saved.since) ? { since: saved.since, byName } : { byName }
 }
@@ -290,6 +335,7 @@ async function savedHistory($: EngineInterface): Promise<History> {
     attempts: typeof value.attempts === 'number' && Number.isFinite(value.attempts) && value.attempts >= 0 ? value.attempts : 0,
     ...(typeof value.oldest === 'number' && Number.isFinite(value.oldest) ? { oldest: value.oldest } : {}),
     ...(typeof value.importedAt === 'number' && Number.isFinite(value.importedAt) ? { importedAt: value.importedAt } : {}),
+    ...(typeof value.version === 'number' && Number.isFinite(value.version) ? { version: value.version } : {}),
   }
 }
 
@@ -297,7 +343,7 @@ async function importHistory($: EngineInterface) {
   const fail = async (error: unknown) => {
     try {
       const saved = await savedHistory($)
-      if (saved.importedAt === undefined) await $.store.set(HISTORY_KEY, { ...saved, attempts: saved.attempts + 1 })
+      if (saved.importedAt === undefined || saved.version !== HISTORY_VERSION) await $.store.set(HISTORY_KEY, { ...saved, attempts: saved.attempts + 1 })
     } catch {}
     try { await update($, importing, () => false) } catch {}
     try { $.ui.log(`my-skills: history import failed: ${error instanceof Error ? error.message : String(error)}`, { to: 'debug' }) } catch {}
@@ -315,8 +361,21 @@ async function importHistory($: EngineInterface) {
       const now = await $.clock.now()
       const saved = await savedHistory($)
       if (saved.importedAt === undefined) {
-        const next: History = { byName: found, importedAt: now, attempts: saved.attempts,
+        const byName: Record<string, Use> = {}
+        for (const [name, use] of Object.entries(found)) byName[name] = { ...use, days: pruneDays(use.days ?? {}, now) }
+        const next: History = { byName, importedAt: now, attempts: saved.attempts, version: HISTORY_VERSION,
           ...(oldest === Infinity ? {} : { oldest }) }
+        await $.store.set(HISTORY_KEY, next)
+        await update($, history, () => next)
+      } else if (saved.version !== HISTORY_VERSION) {
+        // The v2 pass only adds `days`: the transcripts are pruned over time, so
+        // a re-scan would lose uses the stored counts still have.
+        const byName: Record<string, Use> = {}
+        for (const [name, use] of Object.entries(saved.byName)) {
+          const seen = Object.hasOwn(found, name) ? found[name]!.days : undefined
+          byName[name] = seen ? { ...use, days: pruneDays(seen, now) } : use
+        }
+        const next: History = { ...saved, byName, attempts: 0, version: HISTORY_VERSION }
         await $.store.set(HISTORY_KEY, next)
         await update($, history, () => next)
       } else {
@@ -370,6 +429,7 @@ async function importHistory($: EngineInterface) {
               lastUsed: Math.max(previous?.lastUsed ?? -Infinity, at),
               byWorkspace: { ...previous?.byWorkspace,
                 [key]: ((previous && Object.hasOwn(previous.byWorkspace, key) ? previous.byWorkspace[key] : 0) ?? 0) + 1 },
+              days: bump(previous?.days, dayKey(new Date(at))),
             }
             uses++
             oldest = Math.min(oldest, at)
@@ -390,6 +450,10 @@ async function importHistory($: EngineInterface) {
     if (folders.length === 0) await finish()
     else step(0)
   } catch (error) { await fail(error) }
+}
+
+function bump(days: Record<string, number> | undefined, key: string): Record<string, number> {
+  return { ...days, [key]: (days && Object.hasOwn(days, key) ? days[key]! : 0) + 1 }
 }
 
 async function mainRepo($: EngineInterface, root: string): Promise<string> {
@@ -422,6 +486,7 @@ async function record($: EngineInterface, skill: string) {
           ...previous?.byWorkspace,
           [root]: ((previous && Object.hasOwn(previous.byWorkspace, root) ? previous.byWorkspace[root] : 0) ?? 0) + 1,
         },
+        days: pruneDays(bump(previous?.days, dayAgo(now, 0)), now),
       },
     },
   }
@@ -470,7 +535,7 @@ export const register: Register = (on, options) => {
     // `importing` is shared state and outlives a reload, which cancels this load's
     // timers; whether an import is scheduled is this load's own business.
     const saved = await read($, history)
-    if (saved.importedAt === undefined && saved.attempts < 2 && !importScheduled) {
+    if ((saved.importedAt === undefined || saved.version !== HISTORY_VERSION) && saved.attempts < 2 && !importScheduled) {
       importScheduled = true
       await update($, importing, () => true)
       $.clock.after(IMPORT_DELAY, () => void importHistory($))
@@ -570,7 +635,7 @@ export const register: Register = (on, options) => {
                     hover={{ bold: true, color: 'suggestion' }}
                     // A link that points nowhere may still lead to a file outside every
                     // guarded folder (a repo can aim one at ~/.ssh), so it opens nothing.
-                    onPress={() => item.health?.includes(DANGLING) ? undefined : openTarget($, item.target)}
+                    onPress={() => isDangling(item) ? undefined : openTarget($, item.target)}
                   >
                     {item.name}
                   </Button>
@@ -591,9 +656,9 @@ export const register: Register = (on, options) => {
                       {stars.has(item.target) ? '★' : '☆'}
                     </Button>
                   </Box>
-                  {(item.health || use) && (
+                  {(item.issues || use) && (
                     <Box columnGap={1} marginLeft={1} flexShrink={0}>
-                      {item.health && <Text color="warning">!</Text>}
+                      {item.issues && <Text color="warning">!</Text>}
                       {/* Non-breaking spaces keep "4× · 34d ago" one word, so the row
                           moves it whole instead of breaking it across lines. */}
                       {use && <Text dimColor wrap="truncate-end">{`${use.count}×\u00a0·\u00a0${ago.replace(/ /g, '\u00a0')}`}</Text>}
@@ -613,8 +678,8 @@ export const register: Register = (on, options) => {
                     paddingX={1}
                     flexDirection="column"
                   >
-                    {(item.health ?? []).map(flag => <Text color="warning">{flag}</Text>)}
-                    {(item.description || !item.health) && <Text>{item.description || 'No description.'}</Text>}
+                    {(item.issues ?? []).map(flag => <Text color="warning">{flag.text}</Text>)}
+                    {(item.description || !item.issues) && <Text>{item.description || 'No description.'}</Text>}
                     {origin && <Text dimColor>{origin === 'Account' ? origin : `${origin} · ${path}`}</Text>}
                   </Box>
                 </Box>
@@ -636,8 +701,8 @@ export const register: Register = (on, options) => {
                 {closed.has(section.title) ? '▶\uFE0E' : '▼'}
               </Button>
               <Text bold>{section.title} ({section.items.length})</Text>
-              {section.items.filter(item => item.health?.length).length > 0 && (
-                <Text color="warning">{' '}{section.items.filter(item => item.health?.length).length} health</Text>
+              {section.items.filter(item => item.issues?.length).length > 0 && (
+                <Text color="warning">{' '}{section.items.filter(item => item.issues?.length).length} health</Text>
               )}
             </Box>
           </Box>

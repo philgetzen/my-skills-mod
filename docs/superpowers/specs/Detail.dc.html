@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skill detail: phil-writing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#FFFFFF}
+a{color:#1F1E1D}a:hover{color:#000000}
+.ib:hover{background:#F0EEE7}
+.act:hover{background:#F4F2EC}
+</style>
+</helmet>
+<div style="width: 380px; min-height: 960px; box-sizing: border-box; background: #FFFFFF; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1F1E1D; display: flex; flex-direction: column">
+
+  <header style="display: flex; align-items: center; gap: 4px; padding: 10px 8px; border-bottom: 1px solid #ECEAE3">
+    <a href="Main.dc.html" class="ib" aria-label="Back to skills" style="width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; color: #4A4945"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+    <span style="flex: 1; font-size: 14px; color: #5F5E5A">Skills</span>
+    <button class="ib" aria-label="Close" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #4A4945; display: grid; place-items: center; cursor: pointer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg></button>
+  </header>
+
+  <div style="padding: 20px 20px 0; display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600; flex: 1">phil-writing</h1>
+      <button onClick="{{toggleStar}}" aria-pressed="{{starPressed}}" aria-label="{{starLabel}}" class="ib" style="width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; display: grid; place-items: center; cursor: pointer; color: {{starColor}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="{{starFill}}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"></path></svg></button>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+      <code style="font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; background: #F0EEE7; color: #3D3C38; padding: 3px 7px; border-radius: 6px">/phil-writing</code>
+      <span style="font-size: 12px; color: #5F5E5A; border: 1px solid #DEDBD2; padding: 2px 8px; border-radius: 999px">Global</span>
+      <span style="font-size: 12px; color: #5F5E5A; border: 1px solid #DEDBD2; padding: 2px 8px; border-radius: 999px">Account</span>
+    </div>
+  </div>
+
+  <dl style="margin: 18px 20px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+    <div style="background: #F7F5F0; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column-reverse; gap: 2px">
+      <dt style="font-size: 12px; color: #5F5E5A">uses</dt>
+      <dd style="margin: 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums">40</dd>
+    </div>
+    <div style="background: #F7F5F0; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column-reverse; gap: 2px">
+      <dt style="font-size: 12px; color: #5F5E5A">last used</dt>
+      <dd style="margin: 0; font-size: 18px; font-weight: 600">18h ago</dd>
+    </div>
+    <div style="background: #F7F5F0; border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column-reverse; gap: 2px">
+      <dt style="font-size: 12px; color: #5F5E5A">rank</dt>
+      <dd style="margin: 0; font-size: 18px; font-weight: 600">[#]</dd>
+    </div>
+  </dl>
+
+  <section aria-labelledby="trend" style="margin: 14px 20px 0; display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; align-items: baseline; gap: 8px">
+      <h2 id="trend" style="margin: 0; font-size: 12px; font-weight: 600; color: #5F5E5A; text-transform: uppercase; letter-spacing: 0.04em; flex: 1">Last 30 days</h2>
+      <span style="font-size: 12px; color: #5F5E5A">[TREND]</span>
+    </div>
+    <svg role="img" aria-label="Daily uses over the last 30 days, placeholder shape" width="340" height="56" viewBox="0 0 340 56" fill="none">
+      <line x1="0" y1="55" x2="340" y2="55" stroke="#ECEAE3" stroke-width="1"></line>
+      <polyline points="0,46 24,42 48,44 72,38 96,40 120,30 144,34 168,26 192,30 216,22 240,24 264,16 288,20 312,12 340,14" stroke="#4A4945" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></polyline>
+    </svg>
+    <div style="display: flex; justify-content: space-between; font-size: 12px; color: #73726C"><span>30d ago</span><span>Today</span></div>
+  </section>
+
+  <section aria-labelledby="conf" style="margin: 18px 20px 0; border: 1px solid #F0DDB5; background: #FDF8EC; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; gap: 10px; align-items: flex-start">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A5A00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 1px"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4"></path><path d="M12 17.5v.01"></path></svg>
+      <div style="display: flex; flex-direction: column; gap: 3px">
+        <h2 id="conf" style="margin: 0; font-size: 14px; font-weight: 600; color: #6B4600">Two skills answer to /phil-writing</h2>
+        <p style="margin: 0; font-size: 13px; line-height: 1.45; color: #5C3F00">Claude may load either one. Pick the copy to keep.</p>
+      </div>
+    </div>
+    <div role="radiogroup" aria-label="Copy to keep" style="display: flex; flex-direction: column; gap: 8px">
+      <sc-for list="{{copies}}" as="c" hint-placeholder-count="2">
+        <button role="radio" aria-checked="{{c.checked}}" onClick="{{c.pick}}" style="display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px; min-height: 44px; background: #FFFFFF; border-radius: 10px; font: inherit; color: #1F1E1D; cursor: pointer; border: {{c.border}}">
+          <span aria-hidden="true" style="width: 16px; height: 16px; flex: none; margin-top: 1px; border-radius: 8px; box-sizing: border-box; border: {{c.dot}}"></span>
+          <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+            <span style="font-size: 13px; font-weight: 600">{{c.label}}</span>
+            <span style="font-size: 12px; color: #5F5E5A; font-family: ui-monospace, 'SF Mono', Menlo, monospace; overflow-wrap: anywhere">{{c.path}}</span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap">
+      <button style="flex: 1; min-height: 40px; border: 0; border-radius: 8px; background: #1F1E1D; color: #FFFFFF; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">{{primaryLabel}}</button>
+      <button style="flex: 1; min-height: 40px; border: 1px solid #DEDBD2; border-radius: 8px; background: #FFFFFF; color: #1F1E1D; font: inherit; font-size: 13px; cursor: pointer">Rename other copy</button>
+    </div>
+  </section>
+
+  <section style="margin: 22px 20px 0; display: flex; flex-direction: column; gap: 6px">
+    <h2 style="margin: 0; font-size: 12px; font-weight: 600; color: #5F5E5A; text-transform: uppercase; letter-spacing: 0.04em">Description</h2>
+    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #2E2D2A">Draft, rewrite, edit, or audit prose in Phil Getzen's voice. Use for external copy, essays, articles, proposals, product writing, outreach, biographies, referrals, memoir or fiction, voice matching, AI-pattern audits, source and artifact hygiene, or maintenance of Phil's writing guidance. Use whenever wording will be published, sent to another person, or attributed to Phil.</p>
+  </section>
+
+  <nav aria-label="Skill actions" style="margin: 18px 12px 0; display: flex; flex-direction: column; border-top: 1px solid #F0EEE7; padding-top: 6px">
+    <button class="act" style="min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: #1F1E1D; cursor: pointer; text-align: left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A4945" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"></path><path d="M14 3v4h4"></path></svg>Open SKILL.md</button>
+    <button class="act" style="min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: #1F1E1D; cursor: pointer; text-align: left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A4945" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"></path></svg>Copy /phil-writing</button>
+    <button class="act" style="min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; font-size: 14px; color: #1F1E1D; cursor: pointer; text-align: left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4A4945" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"></path></svg>Reveal in Finder</button>
+  </nav>
+
+  <footer style="margin-top: auto; padding: 16px 20px 20px; font-size: 12px; color: #73726C">Uses since Jul 20, preloads included</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":380,"height":960}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { keep: 'account', starred: false };
+  }
+  renderVals() {
+    var self = this, st = this.state;
+    var copies = [
+      ['global', 'Global', '~/.config/skillshare/skills/phil-writing'],
+      ['account', 'Account', 'claude.ai › Customize › Skills']
+    ].map(function (c) {
+      var on = st.keep === c[0];
+      return { label: (on ? 'Keep ' : '') + c[1], path: c[2], checked: on ? 'true' : 'false',
+        border: on ? '1.5px solid #1F1E1D' : '1px solid #E6E3DA',
+        dot: on ? '5px solid #1F1E1D' : '1.5px solid #A9A69C',
+        pick: function () { self.setState({ keep: c[0] }); } };
+    });
+    var other = st.keep === 'global' ? 'Account' : 'Global';
+    var on = st.starred;
+    return {
+      copies: copies,
+      primaryLabel: 'Remove ' + other + ' copy',
+      starPressed: on ? 'true' : 'false', starLabel: on ? 'Unstar phil-writing' : 'Star phil-writing',
+      starFill: on ? 'currentColor' : 'none', starColor: on ? '#1F1E1D' : '#A9A69C',
+      toggleStar: function () { self.setState({ starred: !on }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

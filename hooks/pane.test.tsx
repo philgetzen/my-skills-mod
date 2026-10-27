@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { trendPoints } from './register'
+
 const PANE = {
   plugin: 'my-skills',
   component: 'Pane',
@@ -174,7 +176,7 @@ test('counts a use, shows it on the row, and leaves the prompt untouched', { opt
   full = true
   expect(await $.skill.prompt({ skill: 'verify', text: 'raw' })).toEqual({ text: 'expanded' })
 
-  expect(disk.usage?.byName.verify).toEqual({ count: 2, lastUsed: 40 * DAY, byWorkspace: { '/proj': 2 } })
+  expect(disk.usage?.byName.verify).toMatchObject({ count: 2, lastUsed: 40 * DAY, byWorkspace: { '/proj': 2 } })
   expect(disk.usage.byName.clear).toBeUndefined()
   expect(disk.usage.byName.old).toEqual(old)
   expect(disk.usage.byName.bad).toBeUndefined()
@@ -440,7 +442,8 @@ test('imports history once in the background, skipping subagents and files over 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeDefined()
   await clock.advance(2000)
-  expect(disk.history.byName.verify).toEqual({ count: 3, lastUsed: 20 * DAY, byWorkspace: { '/main': 2, '/dead': 1 } })
+  expect(disk.history.byName.verify).toMatchObject({ count: 3, lastUsed: 20 * DAY, byWorkspace: { '/main': 2, '/dead': 1 } })
+  expect(disk.history.version).toBe(2)
   expect(disk.history.byName.clear).toBeUndefined()
   expect(disk.history.oldest).toBe(10 * DAY)
   expect(disk.history.importedAt).toBe(40 * DAY + 2000)
@@ -465,6 +468,52 @@ test('imports history once in the background, skipping subagents and files over 
   await clock.advance(2000)
   expect(disk.usage.byName.verify.count + disk.history.byName.verify.count).toBe(5)
   expect(reads.filter(path => path.endsWith('s1.jsonl')).length).toBe(1)
+})
+
+test('a use today and a v2 history pass land in the right trend buckets without touching old counts', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+  const DAY = 24 * 60 * 60 * 1000
+  const clock = mock.clock(on, { now: 40 * DAY })
+  const stored = { count: 7, lastUsed: 12 * DAY, byWorkspace: { '/main': 7 } }
+  const disk: Record<string, any> = {
+    usage: { since: 35 * DAY, byName: {} },
+    history: { byName: { verify: stored }, importedAt: 30 * DAY, oldest: 5 * DAY, attempts: 0 },
+  }
+  const row = JSON.stringify({
+    type: 'assistant', timestamp: new Date(30 * DAY).toISOString(), cwd: '/proj',
+    message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'verify' } }] },
+  })
+  const projects = '/home/u/.claude/projects'
+  const files: Record<string, string> = { ...FILES, [`${projects}/-proj/s1.jsonl`]: row }
+  const dirs: Record<string, any[]> = { ...DIRS,
+    [projects]: [{ name: '-proj', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+    [`${projects}/-proj`]: [{ name: 's1.jsonl', kind: 'file', isLink: false, size: 600, mtimeMs: 0 }],
+  }
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('skill.prompt', () => ({ text: 'expanded' }))
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.log', () => ({ value: undefined }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path === '/proj/.git' || e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.skill.prompt({ skill: 'verify', text: 'raw' })
+  await clock.advance(2000)
+
+  expect(disk.history.version).toBe(2)
+  expect(disk.history.importedAt).toBe(30 * DAY)
+  expect(disk.history.byName.verify).toMatchObject(stored)
+  const past = trendPoints(disk.history.byName.verify.days, 40 * DAY + 2000)
+  const today = trendPoints(disk.usage.byName.verify.days, 40 * DAY + 2000)
+  expect(past.length).toBe(10)
+  expect(past[6]).toBe(1)
+  expect(today[9]).toBe(1)
 })
 
 test('with no folder set, Global is ~/.claude/skills and nothing there is flagged as outside it', async ($, on) => {
