@@ -1,6 +1,6 @@
 {
   "name": "my-skills",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Claude Code pane listing the skills and commands you wrote or added, with use counts, health flags, collapsible sections and the skills you use most in the current repo",
   "types": "./types/index.d.ts",
   "author": {

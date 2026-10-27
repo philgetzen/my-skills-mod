@@ -477,8 +477,6 @@ export const register: Register = (on, options) => {
     } else if (!importScheduled) {
       await update($, importing, () => false)
     }
-    void $.ui.open({ id: PANE, title: 'My skills' })
-
     return next(e)
   })
 

@@ -500,3 +500,21 @@ test('with no folder set, Global is ~/.claude/skills and nothing there is flagge
   expect((await ui.find({ type: 'Text', text: /^~\/\.claude\/commands/ }))?.text).toBe('~/.claude/commands')
   await ui.unmount()
 })
+
+test('the pane stays closed until /my-skills opens it', async ($, on) => {
+  const opens: string[] = []
+  mock.clock(on)
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('ui.open', (_, e: any) => { opens.push(e.id); return { value: { isPlaced: true } } })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/home/u' }))
+  on('fs.exists', () => ({ value: false }))
+  on('fs.list', () => ({ value: [] }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect(opens).toEqual([])
+  await $.command.run({ command: 'my-skills', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  expect(opens).toEqual(['my-skills'])
+})

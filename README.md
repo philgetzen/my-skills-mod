@@ -12,11 +12,11 @@ A mod for [Claude Code](https://claude.com/claude-code) that adds a **My skills*
 
    Answer `y` to add the marketplace, then pick a scope. From a shell, run `claude plugin install my-skills --marketplace philgetzen/my-skills-mod` instead. In the Claude desktop app, where `/plugin` does not run, click + next to the prompt box, then Plugins, Add marketplace with `philgetzen/my-skills-mod`, then Add plugin.
 
-2. Start a new session. The pane opens on its own and lists the skills in `~/.claude/skills`, the commands in `~/.claude/commands`, your project's own skills and commands, and the skills on your claude.ai account.
+2. Start a new session and run `/my-skills`. The pane opens in the session rail and lists the skills in `~/.claude/skills`, the commands in `~/.claude/commands`, your project's own skills and commands, and the skills on your claude.ai account.
 
 That's all most people need. If you share one skills folder across several agents with [skillshare](https://github.com/runkids/skillshare), see [Using skillshare](#using-skillshare).
 
-Close the pane and run `/my-skills` to bring it back and rescan.
+Run `/my-skills` again any time to reopen the pane and rescan.
 
 ## What it does
 
@@ -83,7 +83,7 @@ Everything stays on your machine. The mod reads your skill folders and session t
 [skillshare](https://github.com/runkids/skillshare) keeps one folder of skills, `~/.config/skillshare/skills` by default, and links it into Claude Code and your other AI agents. If that's how you work, point the pane's Global section at that folder:
 
 1. Set **Global skills folder** to `~/.config/skillshare/skills` (or wherever your skillshare source lives). The install asks for it; to change it later, open `/config` and find the my-skills setting.
-2. Start a new session or run `/my-skills`.
+2. Run `/my-skills` to reopen the pane with the new folder.
 
 Global then lists your shared folder, and User lists anything in `~/.claude/skills` that skillshare didn't put there. Once the shared folder has skills in it, each of those User skills gets a **Not in your Global folder** flag, because your other agents won't see it. Run `skillshare collect claude` to move it into the shared folder, or delete it if it's a leftover.
 
