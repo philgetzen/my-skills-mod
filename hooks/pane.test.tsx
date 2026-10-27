@@ -320,16 +320,18 @@ test('the sort row stays at the top of the window as the pane scrolls', async ($
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   const scroll = (by: number) =>
     $.ui.scroll({ component: 'Pane', requestId: 'my-skills', offset: 0, by, bodyRows: 20, contentRows: 50, origin: { kind: 'person' } } as any)
-  const top = async () => (await ui.find({ key: 'list' }))?.props.top
-  const moved = await scroll(7)
-  const down = await top()
+  const shows = async (key: string) => (await ui.find({ key })) !== undefined
+  const before = [await shows('collapse:Starred'), await shows('collapse:Global')]
+  const moved = await scroll(2)
+  const down = [await shows('collapse:Starred'), await shows('collapse:Global')]
   await scroll(100)
-  const bottom = await top()
+  const end = await shows('collapse:Global')
   await scroll(-100)
-  expect({ moved, down, bottom, back: await top(),
-    header: (await ui.find({ key: 'sort-row' }))?.props.position,
+  const fits = await $.ui.scroll({ component: 'Pane', requestId: 'my-skills', offset: 0, by: 3, bodyRows: 20, contentRows: 20, origin: { kind: 'person' } } as any)
+  expect({ before, moved, down, end, back: await shows('collapse:Starred'), fits, stillTop: await shows('collapse:Starred'),
+    header: (await ui.find({ key: 'sort-row' })) !== undefined,
     label: (await ui.find({ type: 'Text', text: /^Sort/ }))?.text,
-  }).toEqual({ moved: {}, down: -7, bottom: -30, back: 0, header: undefined, label: 'Sort:' })
+  }).toEqual({ before: [true, true], moved: {}, down: [false, true], end: false, back: true, fits: {}, stillTop: true, header: true, label: 'Sort:' })
   await ui.unmount()
 })
 
