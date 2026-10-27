@@ -303,7 +303,7 @@ test('a collapsed section hides its rows and stays collapsed', async ($, on) => 
   await ui.unmount()
 })
 
-test('the sort row stays at the top of the window as the pane scrolls', async ($, on) => {
+test('the sort options sit in a box at the top of the list', async ($, on) => {
   mock.clock(on)
   mock.store(on)
   on('command.register', () => ({ value: { command: 'my-skills' } }))
@@ -318,9 +318,10 @@ test('the sort row stays at the top of the window as the pane scrolls', async ($
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, scroll: { offset: 7, bodyRows: 20 } } })
-  const row = await ui.find({ key: 'sort-row' })
-  expect({ position: row?.props.position, top: row?.props.top, label: (await ui.find({ type: 'Text', text: /^Sort/ }))?.text })
-    .toEqual({ position: 'absolute', top: 7, label: 'Sort:' })
+  const box = await ui.find({ key: 'sort-options' })
+  expect({ position: (await ui.find({ key: 'sort-row' }))?.props.position, border: box?.props.borderStyle,
+    label: (await ui.find({ type: 'Text', text: /^Sort/ }))?.text })
+    .toEqual({ position: undefined, border: 'round', label: 'Sort:' })
   await ui.unmount()
 })
 

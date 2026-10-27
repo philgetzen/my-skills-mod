@@ -643,23 +643,11 @@ export const register: Register = (on, options) => {
             </Box>
           </Box>
         ))}
-        {/* One header row: the sort on the left, the selected option at full
-            strength and the others dim, and a quiet Refresh on the right. It is
-            drawn over the top row of the window, wherever the pane is scrolled
-            (a scroll is new props, so it redraws), on the pane's own background;
-            the empty row in the flow keeps the first section from starting under
-            it. Last in the tree, so it paints over every row and card. */}
-        <Box height={1} />
-        <Box
-          key="sort-row"
-          position="absolute"
-          top={e.props.scroll.offset}
-          left={0}
-          right={0}
-          backgroundColor="inverseText"
-          justifyContent="space-between"
-        >
-          <Box columnGap={1}>
+        {/* One header row: the sort options in a box of their own, so they read
+            as controls rather than as the list's first row, the selected option
+            at full strength and the others dim; a quiet Refresh on the right. */}
+        <Box key="sort-row" justifyContent="space-between" alignItems="center">
+          <Box key="sort-options" columnGap={1} borderStyle="round" borderColor="subtle" paddingX={1}>
             <Text dimColor>Sort:</Text>
             {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
               <Button

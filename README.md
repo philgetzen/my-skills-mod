@@ -11,7 +11,7 @@ A **Starred** section sits at the top: hover a row and click the ☆ after the n
 
 Hover a name to see what the skill does. Click it to open its `SKILL.md` (or command file) in your default editor, or, for an Account skill, its page in Customize › Skills in the Claude desktop app.
 
-Each row shows how often you have used the skill and when you last did (`12× · 3d ago`). A skill you have not used in 30 days is dimmed. The **Sort** row at the top orders every section by Recent, Most used or Name, remembers your choice, and stays in view as you scroll.
+Each row shows how often you have used the skill and when you last did (`12× · 3d ago`). A skill you have not used in 30 days is dimmed. The **Sort** row at the top orders every section by Recent, Most used or Name and remembers your choice.
 
 The first time it runs, the mod reads your past sessions under `~/.claude/projects` once, in the background, and counts the skills and commands it lists there, so the counts start with your history rather than at install. The pane says "Importing history…" while it works. Subagent transcripts are skipped, and transcripts over 4 MB are read with `grep` where your system has it (macOS and Linux do) and skipped where it does not. From then on every time a skill is loaded counts, subagent preloads included, so treat the numbers as a guide rather than an exact tally. The note at the bottom of the pane says how far back they go.
 
