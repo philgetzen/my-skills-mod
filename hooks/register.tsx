@@ -836,6 +836,7 @@ export const register: Register = (on, options) => {
     const hasTrend = columns >= 48
     const nameCells = Math.max(columns - 1 - 5 - 5 - 3 - (hasTrend ? trendCells + 1 : 0), 8)
     const nameChars = e.surface === 'terminal' ? nameCells : Math.floor(nameCells * 1.4)
+    const isNarrow = columns < 40
 
     const footer = (
       <Box key="footer" marginTop={1}>
@@ -856,6 +857,7 @@ export const register: Register = (on, options) => {
       const points = trendPoints(use?.days, now)
       const word = trendWord(points)
       const isStarred = stars.has(item.target)
+      const shown = fit(item.name, item.issues ? nameChars - 2 : nameChars)
       return (
         <Box key={`row:${where}:${item.target}`} flexDirection="column">
           <Box key={`line:${where}:${item.target}`} width="100%" columnGap={1} alignItems="center">
@@ -864,10 +866,19 @@ export const register: Register = (on, options) => {
             </Button>
             <Box key={`name:${where}:${item.target}`} flexGrow={1} flexShrink={1} minWidth={0} columnGap={1} overflow="hidden">
               <Button key={`open:${where}:${item.target}`} plain dimColor={!use} onPress={() => openDetail($, item)}>
-                {fit(item.name, item.issues ? nameChars - 2 : nameChars)}
+                {shown}
               </Button>
               {item.issues && <Text color="warning">!</Text>}
             </Box>
+            {/* A shortened name shows whole, as an inverted chip laid over the
+                row (never below it, where the pane's edge would clip it), while
+                the pointer is on the row: the line is its hover scope. */}
+            {shown !== item.name && (
+              <Box position="absolute" top={0} left={2} display="none"
+                hover={{ display: 'flex' }} backgroundColor="text" paddingX={1}>
+                <Text color="inverseText">{item.name}</Text>
+              </Box>
+            )}
             {hasTrend && (Svg
               ? <Svg source={lineSvg(points, 44, 18, 3, 16, word)} alt={`30-day trend: ${word}`} width={44} height={18} />
               : <Text dimColor>{glyphs(points)}</Text>)}
@@ -1112,7 +1123,7 @@ export const register: Register = (on, options) => {
       </Box>
     )
     const health = flaggedNames.size > 0 && (
-      <Box key="health" flexDirection="column" borderStyle="round" borderColor="warning" paddingX={1}>
+      <Box key="health" flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={1}>
         <Text color="warning" bold>{`${flaggedNames.size} ${flaggedNames.size === 1 ? 'skill needs' : 'skills need'} attention`}</Text>
         {[...collisions].map(([name, names]) => {
           const first = all.find(item => bare(item.name) === name)
@@ -1132,8 +1143,9 @@ export const register: Register = (on, options) => {
     // controls rather than as the list's first row; the selected one at full strength.
     const sorter = (
       <Box key="sort-row">
-        <Box key="sort-options" columnGap={1} flexWrap="wrap" borderStyle="round" borderColor="subtle" paddingX={1}>
-          <Text dimColor>Sort</Text>
+        <Box key="sort-options" columnGap={1} flexWrap="wrap" borderStyle="round" borderColor="subtle" paddingX={1}
+          {...(isNarrow ? { flexGrow: 1, justifyContent: 'space-between' as const } : {})}>
+          {!isNarrow && <Text dimColor>Sort</Text>}
           {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
             <Button key={`sort:${value}`} plain dimColor={order !== value} onPress={() => setSort($, value)}>
               {label}

@@ -856,5 +856,14 @@ test('a narrow pane cuts long names to fit, drops the trend, and wraps the heade
     header: (await ui.find({ key: 'header' }))?.props.flexWrap,
     sort: (await ui.find({ key: 'sort-options' }))?.props.flexWrap })
     .toEqual({ fits: true, cut: true, tail: true, shrinks: [1, 0, 'hidden'], trend: undefined, header: 'wrap', sort: 'wrap' })
+  // A shortened name shows whole while the pointer is on its row; the narrow
+  // sort box drops its label and spreads the three options.
+  const line = await ui.find({ key: `line:All:plugin:${long}` })
+  const full = line?.children.find((child: any) => child.props?.position === 'absolute') as any
+  expect({ hidden: full?.props.display, shown: full?.hover?.display, placed: full?.props.position,
+    text: (await ui.find({ type: 'Text', text: long }))?.text,
+    label: await ui.find({ type: 'Text', text: /^Sort$/ }),
+    spread: (await ui.find({ key: 'sort-options' }))?.props.justifyContent })
+    .toEqual({ hidden: 'none', shown: 'flex', placed: 'absolute', text: long, label: undefined, spread: 'space-between' })
   await ui.unmount()
 })

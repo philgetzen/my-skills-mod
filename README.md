@@ -64,7 +64,7 @@ Click the ▼ beside Active here or Starred to collapse it, and the ▶ to open 
 
 ### Rows
 
-Every list uses the same row: a star, the name, a `!` when the skill needs attention, a 30-day trend line, the use count (`12×`, or `—` if never used) and how long ago you last used it (`4h`, `3d`, `never`). A name you've never used is drawn dim. While the history import is still running, a skill with no uses yet shows `…` in place of `—` and `never`, since its uses may still be on the way. The trend line sums the last 30 days in ten three-day steps and reads as rising, steady or fading; in the terminal it's drawn with block characters. In a narrow pane (under 48 columns) the trend line is left out, a name too long for its column is shortened in the middle (`anthrop…insights-writer`), and the header and sort controls wrap onto a second line.
+Every list uses the same row: a star, the name, a `!` when the skill needs attention, a 30-day trend line, the use count (`12×`, or `—` if never used) and how long ago you last used it (`4h`, `3d`, `never`). A name you've never used is drawn dim. While the history import is still running, a skill with no uses yet shows `…` in place of `—` and `never`, since its uses may still be on the way. The trend line sums the last 30 days in ten three-day steps and reads as rising, steady or fading; in the terminal it's drawn with block characters. In a narrow pane (under 48 columns) the trend line is left out, a name too long for its column is shortened in the middle (`anthrop…insights-writer`), and the header wraps onto a second line while the sort box drops its `Sort` label. Point at a row whose name was shortened and the full name shows over it.
 
 Click the star to star or unstar a skill. Click the name to open its detail view.
 
