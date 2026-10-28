@@ -33,7 +33,7 @@ const showAll = atom({ plugin: 'my-skills', key: 'showAll' } as const, false)
 const showIdle = atom({ plugin: 'my-skills', key: 'showIdle' } as const, false)
 const keep = atom({ plugin: 'my-skills', key: 'keep' } as const, null)
 const confirming = atom({ plugin: 'my-skills', key: 'confirming' } as const, null)
-const SOURCES: readonly Source[] = ['Global', 'User', 'Account', 'Project']
+const SOURCES: readonly Source[] = ['Global', 'User', 'Account', 'Project', 'Plugins']
 const FIRST_ROWS = 12
 // The health card's one-line reason for each kind it groups by source.
 const REASON: Record<Exclude<Issue['kind'], 'collision'>, string> = {
@@ -60,7 +60,7 @@ const clash = (name: string, other: string[]) =>
   `Same name in ${other.join(' and ')}: both answer to /${name}, so the wrong one may load. Rename or remove one.`
 const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
-const HISTORY_VERSION = 2
+const HISTORY_VERSION = 3
 const DAYS_KEPT = 30
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -241,6 +241,41 @@ async function commands($: EngineInterface, folder: string, confineTo?: string):
   return found.filter((one): one is Item => one !== undefined)
 }
 
+// What the session's enabled plugins add, as the typeahead lists it. Each opens
+// from its plugin's install folder, `skills/<name>/SKILL.md` or
+// `commands/<name>.md`; one with neither gets `plugin:<name>` and no file actions.
+async function pluginSkills($: EngineInterface, home: string): Promise<Item[]> {
+  let listed: { name: string; description: string; source: string }[]
+  try { listed = await $.command.list() } catch { return [] }
+  const installs = new Map<string, string>()
+  try {
+    const manifest = JSON.parse(await $.fs.read(`${home}/.claude/plugins/installed_plugins.json`))
+    for (const [key, entries] of Object.entries(manifest.plugins ?? {})) {
+      const path = Array.isArray(entries) ? entries[0]?.installPath : undefined
+      if (typeof path === 'string') installs.set(key.split('@')[0]!, path)
+    }
+  } catch {
+    // No manifest: the skills still list, without files.
+  }
+  const found = await Promise.all(
+    listed
+      .filter(one => one.source === 'plugin')
+      .map(async one => {
+        const [plugin, skill] = one.name.includes(':') ? one.name.split(':', 2) : [one.name, one.name]
+        const install = installs.get(plugin!)
+        const root = install && await $.fs.stat(install, { resolve: true }).then(found => found.realPath).catch(() => undefined)
+        const files = root ? [`${install}/skills/${skill}/SKILL.md`, `${install}/commands/${skill}.md`] : []
+        let target = `plugin:${one.name}`
+        // A name from frontmatter could hold `..`: only a file inside the plugin opens.
+        for (const file of files) {
+          if (await $.fs.exists(file) && await isInside($, file, root!)) { target = file; break }
+        }
+        return { name: one.name, target, description: one.description ?? '' }
+      }),
+  )
+  return found
+}
+
 async function scan($: EngineInterface, globalSetting: string): Promise<Section[]> {
   const home = (await $.env.get('HOME')) ?? ''
   const root = await $.session.root()
@@ -261,6 +296,9 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
   const projectCommands = isProject ? await commands($, `${root}/.claude/commands`, realRoot) : []
 
   const account = await accountSkills($, `${home}/.claude/skills/synced`)
+  // Kept out of every flag below: plugin names are namespaced, and a plugin's
+  // folder is never one to move to the Trash.
+  const plugins = await pluginSkills($, home)
   const user = [...userSkills, ...userCommands]
   const project = [...projectSkills, ...projectCommands]
 
@@ -316,6 +354,7 @@ async function scan($: EngineInterface, globalSetting: string): Promise<Section[
       items: sort(project),
     },
     { title: 'Account', folders: ['claude.ai, Customize › Skills'], items: sort(account) },
+    { title: 'Plugins', folders: ['Enabled plugins'], items: sort(plugins) },
   ]
 }
 
@@ -364,6 +403,7 @@ const stamp = (now: number) => {
 // mode (a repo with .skillshare/ would otherwise point it at the project's copy);
 // every other copy moves to the Trash under a dated name, so nothing is overwritten.
 async function removeCopy($: EngineInterface, item: Item, source: Source, globalSetting: string) {
+  if (source === 'Plugins' || source === 'Account') return
   const home = (await $.env.get('HOME')) ?? ''
   const name = bare(item.name)
   // Global counts as skillshare's only when it resolves to skillshare's own
@@ -506,7 +546,15 @@ async function importHistory($: EngineInterface) {
     const home = (await $.env.get('HOME')) ?? ''
     const projects = `${home}/.claude/projects`
     const listed = new Set((await read($, sections)).flatMap(section => section.items.map(item => item.name.replace(/^\//, ''))))
-    const cutoff = ((await savedUsage($)).since ?? startedAt) - BOUNDARY
+    const live = await savedUsage($)
+    // Uses after a name's live count began are in the live store. That began at
+    // `since`, or at `first` for a name listed later (a plugin skill); a name with
+    // no live count yet is read to just before this import. The five minutes
+    // leave a use still being recorded to the live count alone.
+    const cutoffOf = (name: string) => {
+      const use = Object.hasOwn(live.byName, name) ? live.byName[name] : undefined
+      return (use ? use.first ?? live.since ?? startedAt : startedAt) - BOUNDARY
+    }
     const found: Record<string, Use> = {}
     const keys = new Map<string, string>()
     let files = 0, grepped = 0, skipped = 0, uses = 0, oldest = Infinity
@@ -521,8 +569,8 @@ async function importHistory($: EngineInterface) {
         await $.store.set(HISTORY_KEY, next)
         await update($, history, () => next)
       } else if (saved.version !== HISTORY_VERSION) {
-        // The v2 pass only adds `days`: the transcripts are pruned over time, so
-        // a re-scan would lose uses the stored counts still have.
+        // A version pass only adds `days` and new names: the transcripts are pruned
+        // over time, so a re-scan would lose uses the stored counts still have.
         const byName: Record<string, Use> = {}
         for (const [name, use] of Object.entries(saved.byName)) {
           const seen = Object.hasOwn(found, name) ? found[name]!.days : undefined
@@ -564,7 +612,7 @@ async function importHistory($: EngineInterface) {
           try { row = JSON.parse(line) } catch { continue }
           if (row === null || typeof row !== 'object') continue
           const at = Date.parse(row.timestamp)
-          if (!(at < cutoff) || typeof row.cwd !== 'string') continue
+          if (!(at < startedAt) || typeof row.cwd !== 'string') continue
           const names: string[] = []
           if (row.type === 'assistant' && Array.isArray(row.message?.content)) {
             for (const block of row.message.content) {
@@ -578,7 +626,7 @@ async function importHistory($: EngineInterface) {
           }
           for (const raw of names) {
             const name = raw.replace(/^\//, '')
-            if (!listed.has(name)) continue
+            if (!listed.has(name) || !(at < cutoffOf(name))) continue
             const key = keys.get(row.cwd) ?? await mainRepo($, row.cwd)
             keys.set(row.cwd, key)
             const previous = Object.hasOwn(found, name) ? found[name] : undefined
@@ -626,9 +674,13 @@ async function mainRepo($: EngineInterface, root: string): Promise<string> {
   }
 }
 
-async function record($: EngineInterface, skill: string) {
+async function record($: EngineInterface, given: string) {
   const list = await read($, sections)
-  if (!list.some(section => section.items.some(item => item.name.replace(/^\//, '') === skill))) return
+  const names = list.flatMap(section => section.items.map(item => item.name.replace(/^\//, '')))
+  // A plugin skill may arrive without its `<plugin>:`; it counts when one plugin has it.
+  const namespaced = names.filter(name => name.endsWith(`:${given}`))
+  const skill = names.includes(given) ? given : namespaced.length === 1 ? namespaced[0]! : undefined
+  if (skill === undefined) return
   const now = await $.clock.now()
   const root = await mainRepo($, await $.session.root())
   const saved = await savedUsage($)
@@ -640,6 +692,7 @@ async function record($: EngineInterface, skill: string) {
       [skill]: {
         count: (previous?.count ?? 0) + 1,
         lastUsed: now,
+        ...(previous ? previous.first === undefined ? {} : { first: previous.first } : { first: now }),
         byWorkspace: {
           ...previous?.byWorkspace,
           [root]: ((previous && Object.hasOwn(previous.byWorkspace, root) ? previous.byWorkspace[root] : 0) ?? 0) + 1,
@@ -842,8 +895,11 @@ export const register: Register = (on, options) => {
       const hasCollision = shown.issues?.some(issue => issue.kind === 'collision') ?? false
       const kept = await read($, keep)
       const asking = await read($, confirming)
-      const keptTarget = copies.some(item => item.target === kept) ? kept : null
+      // A plugin's copy is never offered: its files belong to the plugin.
+      const fixable = copies.filter(item => sourceOf.get(item) !== 'Plugins')
+      const keptTarget = fixable.some(item => item.target === kept) ? kept : null
       const isAccount = sourceOf.get(shown) === 'Account'
+      const isFileless = shown.target.startsWith('plugin:')
       const age = ago(use)
       const numbers = ['', '', 'Two', 'Three', 'Four']
       return (
@@ -886,14 +942,14 @@ export const register: Register = (on, options) => {
               <Text dimColor>Today</Text>
             </Box>
           </Box>
-          {hasCollision && copies.length > 1 && (
+          {hasCollision && fixable.length > 1 && (
             <Box key="collision" flexDirection="column" rowGap={1} borderStyle="round" borderColor="warning" paddingX={1}>
               <Box flexDirection="column">
-                <Text color="warning" bold>{`${numbers[copies.length] ?? copies.length} skills answer to /${name}`}</Text>
+                <Text color="warning" bold>{`${numbers[fixable.length] ?? fixable.length} skills answer to /${name}`}</Text>
                 <Text>Claude may load either one. Pick the copy to keep.</Text>
               </Box>
               <Box flexDirection="column">
-                {copies.map(copy => {
+                {fixable.map(copy => {
                   const source = sourceOf.get(copy) ?? 'Global'
                   const isKept = keptTarget === copy.target
                   return (
@@ -906,7 +962,7 @@ export const register: Register = (on, options) => {
                   )
                 })}
               </Box>
-              {keptTarget !== null && copies.filter(copy => copy.target !== keptTarget).map(copy => {
+              {keptTarget !== null && fixable.filter(copy => copy.target !== keptTarget).map(copy => {
                 const source = sourceOf.get(copy) ?? 'Global'
                 if (source === 'Account') {
                   return (
@@ -945,13 +1001,13 @@ export const register: Register = (on, options) => {
           <Box key="actions" flexDirection="column" alignItems="flex-start">
             {/* A link that points nowhere may still lead to a file outside every
                 guarded folder (a repo can aim one at ~/.ssh), so it opens nothing. */}
-            {!isDangling(shown) && (
+            {!isDangling(shown) && !isFileless && (
               <Button key="open-file" plain onPress={() => openTarget($, shown.target)}>
                 {isAccount ? 'Open Customize › Skills' : shown.target.endsWith('/SKILL.md') ? 'Open SKILL.md' : 'Open file'}
               </Button>
             )}
             <Button key="copy" plain onPress={press => copyCommand($, `/${name}`, press.surface)}>{`Copy /${name}`}</Button>
-            {!isAccount && <Button key="reveal" plain onPress={() => reveal($, shown.target)}>Reveal in Finder</Button>}
+            {!isAccount && !isFileless && <Button key="reveal" plain onPress={() => reveal($, shown.target)}>Reveal in Finder</Button>}
           </Box>
           {footer}
         </Box>

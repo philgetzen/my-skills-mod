@@ -480,7 +480,7 @@ test('imports history once in the background, skipping subagents and files over 
   expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeDefined()
   await clock.advance(2000)
   expect(disk.history.byName.verify).toMatchObject({ count: 3, lastUsed: 20 * DAY, byWorkspace: { '/main': 2, '/dead': 1 } })
-  expect(disk.history.version).toBe(2)
+  expect(disk.history.version).toBe(3)
   expect(disk.history.byName.clear).toBeUndefined()
   expect(disk.history.oldest).toBe(10 * DAY)
   expect(disk.history.importedAt).toBe(40 * DAY + 2000)
@@ -547,7 +547,7 @@ test('a use today and a v2 history pass land in the right trend buckets without 
   await $.skill.prompt({ skill: 'verify', text: 'raw' })
   await clock.advance(2000)
 
-  expect(disk.history.version).toBe(2)
+  expect(disk.history.version).toBe(3)
   expect(disk.history.importedAt).toBe(30 * DAY)
   expect(disk.history.byName.verify).toMatchObject(stored)
   const past = trendPoints(disk.history.byName.verify.days, 40 * DAY + 2000)
@@ -751,5 +751,70 @@ test('a collision is fixed only after a pick and a confirm, through skillshare o
   expect(ran[1]?.argv[2]).toMatch(/^\/home\/u\/\.Trash\/agents \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d$/)
   expect(toasts.at(-1)).toBe('Moved to Trash.')
   expect(ran.some(one => one.argv[0] === 'rm')).toBe(false)
+  await ui.unmount()
+})
+
+test('the Plugins chip lists enabled plugin skills, opens their SKILL.md, and imports their uses since tracking began', { options: { globalSkillsDir: '~/.config/skillshare/skills' } }, async ($, on) => {
+  const DAY = 24 * 60 * 60 * 1000
+  const clock = mock.clock(on, { now: 40 * DAY })
+  const install = '/home/u/.claude/plugins/cache/official/superpowers/7.0.0'
+  const brainstorm = `${install}/skills/brainstorming/SKILL.md`
+  // Live tracking began on day 35, the history import already ran at version 2;
+  // the plugin skill was used on day 38, after tracking began, and never counted.
+  const disk: Record<string, any> = {
+    usage: { since: 35 * DAY, byName: {} },
+    history: { byName: {}, importedAt: 30 * DAY, oldest: 5 * DAY, attempts: 0, version: 2 },
+  }
+  const row = JSON.stringify({
+    type: 'assistant', timestamp: new Date(38 * DAY).toISOString(), cwd: '/proj',
+    message: { content: [{ type: 'tool_use', name: 'Skill', input: { skill: 'superpowers:brainstorming' } }] },
+  })
+  const projects = '/home/u/.claude/projects'
+  const files: Record<string, string> = { ...FILES,
+    [`${projects}/-proj/s1.jsonl`]: row,
+    [brainstorm]: '---\ndescription: Shape it first\n---',
+    '/home/u/.claude/plugins/installed_plugins.json': JSON.stringify({ version: 2, plugins: {
+      'superpowers@official': [{ scope: 'user', installPath: install }],
+    } }),
+  }
+  const dirs: Record<string, any[]> = { ...DIRS,
+    [projects]: [{ name: '-proj', kind: 'dir', isLink: false, size: 0, mtimeMs: 0 }],
+    [`${projects}/-proj`]: [{ name: 's1.jsonl', kind: 'file', isLink: false, size: 600, mtimeMs: 0 }],
+  }
+  const opened: string[][] = []
+  on('store.get', (_, e: any) => ({ value: disk[e.key] }))
+  on('store.set', (_, e: any) => { disk[e.key] = e.value; return { value: undefined } })
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('command.list', () => ({ value: [
+    { name: 'superpowers:brainstorming', description: 'Shape it first', source: 'plugin', plugin: 'superpowers' },
+    { name: 'simplify', description: 'Built in', source: 'builtin' },
+    { name: 'mcp__notion__search', description: 'From a server', source: 'mcp' },
+  ] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.log', () => ({ value: undefined }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path === '/proj/.git' || e.path in files || e.path in dirs }))
+  on('fs.list', (_, e: any) => ({ value: dirs[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in files ? { value: files[e.path] } : { deny: 'missing' }) as any)
+  on('process.run', (_, e: any) => { opened.push([...e.argv]); return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } })
+
+  on('skill.prompt', () => ({ text: 'expanded' }))
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  // Used again before the delayed import runs: the day-38 use must still import.
+  await $.skill.prompt({ skill: 'superpowers:brainstorming', text: 'raw' })
+  await clock.advance(2000)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ key: 'chip:Plugins' }))?.text).toBe('Plugins 1')
+  await ui.press({ key: 'chip:Plugins' })
+  expect((await ui.find({ key: `open:All:${brainstorm}` }))?.text).toBe('superpowers:brainstorming')
+  await ui.press({ key: `open:All:${brainstorm}` })
+  await ui.press({ key: 'open-file' })
+  expect(opened).toContainEqual(['open', '-t', brainstorm])
+  expect(trendPoints(disk.history.byName['superpowers:brainstorming']?.days, 40 * DAY + 2000)[9]).toBe(1)
   await ui.unmount()
 })

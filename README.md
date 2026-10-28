@@ -20,7 +20,7 @@ Run `/my-skills` again any time to reopen the pane and rescan.
 
 ## What it does
 
-- **Lists every skill once:** pick a source with the chips (Global, User, Account, Project) and the list shows that source's skills, twelve at a time.
+- **Lists every skill once:** pick a source with the chips (Global, User, Account, Project, Plugins) and the list shows that source's skills, twelve at a time.
 - **Counts use:** every row shows how many times you've used it, when you last did, and a small 30-day trend line. Your past sessions are imported on first run, so the counts start with your history.
 - **Puts problems at the top:** a health card lists what needs attention, with a button that opens the fix or filters the list to the skills it means.
 - **Fixes a name collision for you:** when two copies answer to the same `/name`, the skill's detail view lets you pick the copy to keep and move the other to the Trash.
@@ -60,6 +60,7 @@ Click the ▼ beside Active here or Starred to collapse it, and the ▶ to open 
 | **User** | `~/.claude/commands`. When Global points at another folder, User also lists the skills in `~/.claude/skills` that aren't already under Global. |
 | **Account** | Skills uploaded to your claude.ai account, read from the copy Claude Code syncs to `~/.claude/skills/synced`. |
 | **Project** | `.claude/skills` and `.claude/commands` in the session's project root. Links that point outside the project are left out. |
+| **Plugins** | The skills and commands your enabled plugins add, named `plugin:skill` as you type them. They're never flagged: plugin names can't clash with yours, and the mod won't move a plugin's files. |
 
 ### Rows
 
@@ -76,7 +77,7 @@ The detail view replaces the list in the same pane; "‹ Skills" goes back. It s
 - A chart of the last 30 days, day by day, with the trend word.
 - Any problem with the skill, and what to do about it.
 - The full description.
-- Actions: **Open SKILL.md** (or the command's file; an Account skill opens its page in Customize › Skills in the Claude desktop app), **Copy /name**, and **Reveal in Finder**. A broken link offers nothing to open.
+- Actions: **Open SKILL.md** (or the command's file; an Account skill opens its page in Customize › Skills in the Claude desktop app), **Copy /name**, and **Reveal in Finder**. A plugin skill opens from the plugin's install folder. A broken link, or a plugin command with no file, offers nothing to open.
 
 ### Fixing a name collision
 

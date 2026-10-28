@@ -1,6 +1,6 @@
 {
   "name": "my-skills",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Claude Code pane listing the skills and commands you wrote or added: search, a health card that fixes name collisions, use counts with 30-day trends, stars, a per-repo Active here list, and a detail view for each skill",
   "types": "./types/index.d.ts",
   "author": {
