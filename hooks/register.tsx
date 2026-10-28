@@ -828,10 +828,14 @@ export const register: Register = (on, options) => {
     const close = () => $.ui.close({ id: PANE })
     // Row columns in cells: star, name, trend (once the pane is wide enough to
     // keep a name readable beside it), uses and age, one cell between each.
+    // The name column shrinks to the room really left (a desktop pane's padding
+    // and scrollbar sit inside bodyColumns), and desktop text sets about 1.4
+    // characters to a cell, so names there are cut to that many characters.
     const columns = e.props.bodyColumns
     const trendCells = Svg ? 6 : 10
     const hasTrend = columns >= 48
     const nameCells = Math.max(columns - 1 - 5 - 5 - 3 - (hasTrend ? trendCells + 1 : 0), 8)
+    const nameChars = e.surface === 'terminal' ? nameCells : Math.floor(nameCells * 1.4)
 
     const footer = (
       <Box key="footer" marginTop={1}>
@@ -854,13 +858,13 @@ export const register: Register = (on, options) => {
       const isStarred = stars.has(item.target)
       return (
         <Box key={`row:${where}:${item.target}`} flexDirection="column">
-          <Box key={`line:${where}:${item.target}`} columnGap={1} alignItems="center">
+          <Box key={`line:${where}:${item.target}`} width="100%" columnGap={1} alignItems="center">
             <Button key={`star:${where}:${item.target}`} plain dimColor={!isStarred} onPress={() => setStar($, item.target, !isStarred)}>
               {isStarred ? '★' : '☆'}
             </Button>
-            <Box width={nameCells} flexShrink={0} columnGap={1} overflow="hidden">
+            <Box key={`name:${where}:${item.target}`} flexGrow={1} flexShrink={1} minWidth={0} columnGap={1} overflow="hidden">
               <Button key={`open:${where}:${item.target}`} plain dimColor={!use} onPress={() => openDetail($, item)}>
-                {fit(item.name, item.issues ? nameCells - 2 : nameCells)}
+                {fit(item.name, item.issues ? nameChars - 2 : nameChars)}
               </Button>
               {item.issues && <Text color="warning">!</Text>}
             </Box>

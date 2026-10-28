@@ -846,12 +846,15 @@ test('a narrow pane cuts long names to fit, drops the trend, and wraps the heade
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 30 } })
   await ui.press({ key: 'chip:Plugins' })
-  // 30 cells: star 1, count 5, age 5 and three gaps leave the name 16.
+  // 30 cells: star 1, count 5, age 5 and three gaps leave the name 16 cells,
+  // about 22 characters of desktop text; the column shrinks to the room left.
   const name = (await ui.find({ key: `open:All:plugin:${long}` }))?.text ?? ''
-  expect({ fits: name.length <= 16, cut: name.includes('…'), tail: name.endsWith('writer'),
+  const column = await ui.find({ key: `name:All:plugin:${long}` })
+  expect({ fits: name.length <= 22, cut: name.includes('…'), tail: name.endsWith('writer'),
+    shrinks: [column?.props.flexShrink, column?.props.minWidth, column?.props.overflow],
     trend: await ui.find({ type: 'Svg' }),
     header: (await ui.find({ key: 'header' }))?.props.flexWrap,
     sort: (await ui.find({ key: 'sort-options' }))?.props.flexWrap })
-    .toEqual({ fits: true, cut: true, tail: true, trend: undefined, header: 'wrap', sort: 'wrap' })
+    .toEqual({ fits: true, cut: true, tail: true, shrinks: [1, 0, 'hidden'], trend: undefined, header: 'wrap', sort: 'wrap' })
   await ui.unmount()
 })
