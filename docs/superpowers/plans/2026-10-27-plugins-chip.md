@@ -34,3 +34,5 @@ advisor (Fable, same-family), before build: 1 blocking finding fixed (history cu
 - Anthropic account skills with plain ids (deep-research): left out on purpose since 0.6.
 - Collision checks between an unnamespaced mod command and a user skill.
 - Enabling or disabling plugins from the panel.
+
+Code review: Codex (Astra/high, cross-family) on the diff. 4 findings: 4 fixed, 0 filed, 0 dropped. A plugin copy could reach the collision card's Remove (now excluded, and `removeCopy` refuses Plugins and Account); a `..` name could open a file outside the plugin (now confined to the resolved install folder); a live use before the import hid older plugin uses (live entries now carry `first`, the cutoff is per name); an in-flight use could count twice (names with no live entry stop 5 minutes before the import).
