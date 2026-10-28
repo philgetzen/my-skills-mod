@@ -12,7 +12,7 @@ A mod for [Claude Code](https://claude.com/claude-code) that adds a **My skills*
 
    Answer `y` to add the marketplace, then pick a scope. From a shell, run `claude plugin install my-skills --marketplace philgetzen/my-skills-mod` instead. In the Claude desktop app, where `/plugin` does not run, click + next to the prompt box, then Plugins, Add marketplace with `philgetzen/my-skills-mod`, then Add plugin.
 
-2. Start a new session and run `/my-skills`. The pane opens in the session rail and lists the skills in `~/.claude/skills`, the commands in `~/.claude/commands`, your project's own skills and commands, and the skills on your claude.ai account.
+2. Start a new session and run `/my-skills`. The pane opens in the session rail and lists the skills in `~/.claude/skills`, the commands in `~/.claude/commands`, your project's own skills and commands, the skills on your claude.ai account, and the skills and commands your enabled plugins add.
 
 That's all most people need. If you share one skills folder across several agents with [skillshare](https://github.com/runkids/skillshare), see [Using skillshare](#using-skillshare).
 
@@ -35,6 +35,8 @@ I have more skills than I can remember the names of. As I write this, 66 live in
 So the first version did one thing: it kept the list beside the conversation, grouped by where each skill lives, where I could check a name without leaving my work.
 
 Once the list was always in view, two more problems showed up. I couldn't tell which skills I still used, so I was deciding what to prune from memory. And a broken symlink, a skill with no description, or two skills answering to the same name only came to light when one of them misfired in the middle of real work. Use counts and health flags came next, so each row now carries the two facts I kept wanting: how much I use it, and whether anything is wrong with it.
+
+The latest version turns flags into fixes. A health card at the top says what needs attention and opens the fix, and a name collision can be settled from the pane without hunting down the two copies. It also lists plugin skills. When I checked, the pane showed 56 of the 130 skills my session could run, and another 56 came from enabled plugins it didn't list at all.
 
 ## How it works
 
@@ -95,7 +97,7 @@ If the move fails, the pane shows the error and changes nothing. There is no ren
 
 The mod counts a use each time Claude Code loads a skill or command, whether you typed `/name` or Claude called it, and keeps the count, the last-used date, the uses per day for the last 30 days, and the uses per project.
 
-Counts would be empty for weeks if they started at install, so on its first run the mod reads your past sessions under `~/.claude/projects` once, in the background, and counts the skills and commands they used. The pane says "Importing history…" while it works. Only names the pane lists are counted, so built-in commands and other plugins' skills drop out. Subagent transcripts are skipped. Transcripts over 4 MB are read with `grep` where your system has it (macOS and Linux do) and skipped where it doesn't. The note at the bottom of the pane says how far back the counts go.
+Counts would be empty for weeks if they started at install, so on its first run the mod reads your past sessions under `~/.claude/projects` once, in the background, and counts the skills and commands they used. The pane says "Importing history…" while it works. Only names the pane lists are counted, so built-in commands, MCP commands and skills from plugins you haven't enabled drop out. Subagent transcripts are skipped. Transcripts over 4 MB are read with `grep` where your system has it (macOS and Linux do) and skipped where it doesn't. The note at the bottom of the pane says how far back the counts go.
 
 From then on, every load counts, including skills a subagent preloads. Treat the numbers as a guide to what you use, not an exact tally.
 
