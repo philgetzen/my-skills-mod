@@ -478,6 +478,14 @@ test('imports history once in the background, skipping subagents and files over 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: /^Importing history/ })).toBeDefined()
+  // While importing, a skill with no uses yet reads as pending, not as never used.
+  await ui.press({ key: 'chip:Project' })
+  expect(await ui.find({ type: 'Text', text: 'never' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '…' })).toBeDefined()
+  await ui.press({ key: 'open:All:/proj/.claude/skills/good/SKILL.md' })
+  expect(await ui.find({ type: 'Text', text: 'updating' })).toBeDefined()
+  await ui.press({ key: 'back' })
+  await ui.press({ key: 'chip:Global' })
   await clock.advance(2000)
   expect(disk.history.byName.verify).toMatchObject({ count: 3, lastUsed: 20 * DAY, byWorkspace: { '/main': 2, '/dead': 1 } })
   expect(disk.history.version).toBe(3)
@@ -498,6 +506,7 @@ test('imports history once in the background, skipping subagents and files over 
   expect((await ui.find({ key: 'open:All:/home/u/.claude/skills/verify' }))?.props.dimColor).toBe(false)
   await ui.press({ key: 'chip:Project' })
   expect((await ui.find({ key: 'open:All:/proj/.claude/skills/good/SKILL.md' }))?.props.dimColor).toBe(true)
+  expect(await ui.find({ type: 'Text', text: 'never' })).toBeDefined()
   expect((await ui.find({ type: 'Text', text: /^Uses since / }))?.text).toBe(
     `Uses since ${new Date(10 * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, preloads included`)
   await ui.unmount()

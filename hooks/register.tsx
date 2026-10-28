@@ -812,7 +812,8 @@ export const register: Register = (on, options) => {
     }
     const sorted = (items: Item[]) => [...items].sort(compare)
     const ago = (use: Use | undefined) => {
-      if (!use) return 'never'
+      // Until the history import ends, no uses yet may still mean some to come.
+      if (!use) return busy ? 'updating' : 'never'
       const age = now - use.lastUsed
       return age < HOUR ? 'now' : age < DAY ? `${Math.floor(age / HOUR)}h` : `${Math.floor(age / DAY)}d`
     }
@@ -853,10 +854,10 @@ export const register: Register = (on, options) => {
               ? <Svg source={lineSvg(points, 44, 18, 3, 16, word)} alt={`30-day trend: ${word}`} width={44} height={18} />
               : <Text dimColor>{glyphs(points)}</Text>}
             <Box width={5} justifyContent="flex-end" flexShrink={0}>
-              <Text>{use ? `${use.count}×` : '—'}</Text>
+              <Text>{use ? `${use.count}×` : busy ? '…' : '—'}</Text>
             </Box>
             <Box width={5} justifyContent="flex-end" flexShrink={0}>
-              <Text dimColor>{ago(use)}</Text>
+              <Text dimColor>{!use && busy ? '…' : ago(use)}</Text>
             </Box>
           </Box>
           {withSource && <Box paddingLeft={2}><Text dimColor>{sourceOf.get(item) ?? ''}</Text></Box>}
@@ -921,7 +922,7 @@ export const register: Register = (on, options) => {
             </Box>
           </Box>
           <Box key="stats" columnGap={1}>
-            {([['uses', String(count)], ['last used', age === 'never' || age === 'now' ? age : `${age} ago`], ['rank', count > 0 ? `#${rank}` : '—']] as const)
+            {([['uses', String(count)], ['last used', age === 'never' || age === 'updating' || age === 'now' ? age : `${age} ago`], ['rank', count > 0 ? `#${rank}` : '—']] as const)
               .map(([label, value]) => (
                 <Box key={`stat:${label}`} flexDirection="column" flexGrow={1} borderStyle="round" borderColor="subtle" paddingX={1}>
                   <Text dimColor>{label}</Text>
