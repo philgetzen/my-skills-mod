@@ -128,6 +128,14 @@ function glyphs(values: number[]): string {
 }
 
 const bare = (name: string) => name.replace(/^\//, '')
+// A name cut to `cells` with an ellipsis in the middle, keeping more of the
+// tail: a plugin skill's own name sits after its `plugin:` prefix.
+const fit = (name: string, cells: number) => {
+  if (name.length <= cells) return name
+  const kept = Math.max(cells - 1, 2)
+  const head = Math.floor(kept / 3)
+  return `${name.slice(0, head)}…${name.slice(name.length - (kept - head))}`
+}
 const own = <T,>(record: Record<string, T>, key: string): T | undefined => (Object.hasOwn(record, key) ? record[key] : undefined)
 const expand = (path: string, home: string) => (path.startsWith('~') ? `${home}${path.slice(1)}` : path)
 const tildeOf = (path: string, home: string) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path)
@@ -818,6 +826,12 @@ export const register: Register = (on, options) => {
       return age < HOUR ? 'now' : age < DAY ? `${Math.floor(age / HOUR)}h` : `${Math.floor(age / DAY)}d`
     }
     const close = () => $.ui.close({ id: PANE })
+    // Row columns in cells: star, name, trend (once the pane is wide enough to
+    // keep a name readable beside it), uses and age, one cell between each.
+    const columns = e.props.bodyColumns
+    const trendCells = Svg ? 6 : 10
+    const hasTrend = columns >= 48
+    const nameCells = Math.max(columns - 1 - 5 - 5 - 3 - (hasTrend ? trendCells + 1 : 0), 8)
 
     const footer = (
       <Box key="footer" marginTop={1}>
@@ -844,15 +858,15 @@ export const register: Register = (on, options) => {
             <Button key={`star:${where}:${item.target}`} plain dimColor={!isStarred} onPress={() => setStar($, item.target, !isStarred)}>
               {isStarred ? '★' : '☆'}
             </Button>
-            <Box flexGrow={1} flexShrink={1} columnGap={1}>
+            <Box width={nameCells} flexShrink={0} columnGap={1} overflow="hidden">
               <Button key={`open:${where}:${item.target}`} plain dimColor={!use} onPress={() => openDetail($, item)}>
-                {item.name}
+                {fit(item.name, item.issues ? nameCells - 2 : nameCells)}
               </Button>
               {item.issues && <Text color="warning">!</Text>}
             </Box>
-            {Svg
+            {hasTrend && (Svg
               ? <Svg source={lineSvg(points, 44, 18, 3, 16, word)} alt={`30-day trend: ${word}`} width={44} height={18} />
-              : <Text dimColor>{glyphs(points)}</Text>}
+              : <Text dimColor>{glyphs(points)}</Text>)}
             <Box width={5} justifyContent="flex-end" flexShrink={0}>
               <Text>{use ? `${use.count}×` : busy ? '…' : '—'}</Text>
             </Box>
@@ -1017,7 +1031,7 @@ export const register: Register = (on, options) => {
 
     // LIST VIEW
     const header = (
-      <Box key="header" justifyContent="space-between" alignItems="center">
+      <Box key="header" justifyContent="space-between" alignItems="center" flexWrap="wrap">
         <Box columnGap={1}>
           <Text bold>Skills</Text>
           <Text dimColor>{String(all.length)}</Text>
@@ -1114,7 +1128,7 @@ export const register: Register = (on, options) => {
     // controls rather than as the list's first row; the selected one at full strength.
     const sorter = (
       <Box key="sort-row">
-        <Box key="sort-options" columnGap={1} borderStyle="round" borderColor="subtle" paddingX={1}>
+        <Box key="sort-options" columnGap={1} flexWrap="wrap" borderStyle="round" borderColor="subtle" paddingX={1}>
           <Text dimColor>Sort</Text>
           {([['recent', 'Recent'], ['count', 'Most used'], ['name', 'Name']] as const).map(([value, label]) => (
             <Button key={`sort:${value}`} plain dimColor={order !== value} onPress={() => setSort($, value)}>

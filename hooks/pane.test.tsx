@@ -827,3 +827,31 @@ test('the Plugins chip lists enabled plugin skills, opens their SKILL.md, and im
   expect(trendPoints(disk.history.byName['superpowers:brainstorming']?.days, 40 * DAY + 2000)[9]).toBe(1)
   await ui.unmount()
 })
+
+test('a narrow pane cuts long names to fit, drops the trend, and wraps the header and sort controls', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
+  const long = 'anthropic-skills:consulting-insights-writer'
+  on('command.register', () => ({ value: { command: 'my-skills' } }))
+  on('command.list', () => ({ value: [{ name: long, description: 'Drafts insights', source: 'plugin', plugin: 'anthropic-skills' }] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('env.get', () => ({ value: '/home/u' }))
+  on('session.root', () => ({ value: '/proj' }))
+  on('fs.exists', (_, e: any) => ({ value: e.path in FILES || e.path in DIRS }))
+  on('fs.list', (_, e: any) => ({ value: DIRS[e.path] ?? [] }))
+  on('fs.stat', (_, e: any) => ({ value: { kind: e.path === '/proj' ? 'dir' : 'file', size: 1, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.read', (_, e: any) => (e.path in FILES ? { value: FILES[e.path] } : { deny: 'missing' }) as any)
+
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop', props: { ...PANE.props, bodyColumns: 30 } })
+  await ui.press({ key: 'chip:Plugins' })
+  // 30 cells: star 1, count 5, age 5 and three gaps leave the name 16.
+  const name = (await ui.find({ key: `open:All:plugin:${long}` }))?.text ?? ''
+  expect({ fits: name.length <= 16, cut: name.includes('…'), tail: name.endsWith('writer'),
+    trend: await ui.find({ type: 'Svg' }),
+    header: (await ui.find({ key: 'header' }))?.props.flexWrap,
+    sort: (await ui.find({ key: 'sort-options' }))?.props.flexWrap })
+    .toEqual({ fits: true, cut: true, tail: true, trend: undefined, header: 'wrap', sort: 'wrap' })
+  await ui.unmount()
+})
